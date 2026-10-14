@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vestia</title>
+  <meta name="description" content="Vestia — tu armario virtual con vestidor y Vistelo AI.">
+  <meta name="theme-color" content="#0b1a36">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Vestia">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Telón de entrada -->
+  <div id="stage" class="stage" aria-hidden="false">
+    <div class="stage-bg"></div>
+    <div class="stage-floor"></div>
+    <div class="beam beam-l"></div><div class="beam beam-r"></div>
+    <div class="stage-stars" aria-hidden="true"></div>
+    <div class="curtain left"><span class="tassel"></span></div>
+    <div class="curtain right"><span class="tassel"></span></div>
+    <div class="valance"><span class="fringe"></span></div>
+    <div class="stage-content">
+      <div class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="58" height="58"><path d="M32 14a5 5 0 1 1 5 5c-2 0-5 1.5-5 4v3M32 26 8 42c-2 1.4-1 4 1.4 4h45.2c2.4 0 3.4-2.6 1.4-4L32 26Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1 class="brand" aria-label="Vestia">Vestia</h1>
+      <p class="tagline">Tu armario, tus colores, tu estilo.</p>
+      <p class="powered"><span>✦</span> con Vistelo AI</p>
+      <div id="onboard" class="onboard" hidden>
+        <label for="onboardName">¿Cómo te llamas?</label>
+        <input id="onboardName" type="text" autocomplete="given-name" placeholder="Tu nombre" maxlength="30">
+      </div>
+      <button id="openStage" class="btn-stage">Abrir el armario</button>
+    </div>
+    <div class="stage-flash"></div>
+    <button class="stage-skip" id="stageSkip">Saltar</button>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <div class="backdrop-deco" aria-hidden="true">
+      <i></i><i></i><i></i>
+      <div class="deco" style="--x:6%;--y:16%;--s:74px;--d:.25;--r:-14deg;--t:13s"><svg viewBox="0 0 64 64"><path d="M32 14a5 5 0 1 1 5 5c-2 0-5 1.5-5 4v3M32 26 8 42c-2 1.4-1 4 1.4 4h45.2c2.4 0 3.4-2.6 1.4-4L32 26Z"/></svg></div>
+      <div class="deco" style="--x:84%;--y:9%;--s:40px;--d:.5;--r:20deg;--t:9s"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="15" opacity=".5"/><circle cx="26" cy="26" r="3" class="f"/><circle cx="38" cy="26" r="3" class="f"/><circle cx="26" cy="38" r="3" class="f"/><circle cx="38" cy="38" r="3" class="f"/></svg></div>
+      <div class="deco" style="--x:78%;--y:34%;--s:96px;--d:.15;--r:12deg;--t:16s"><svg viewBox="0 0 96 64"><path d="M6 52 L72 8"/><ellipse cx="75" cy="6" rx="4" ry="2" transform="rotate(-34 75 6)"/><path d="M75 6 C 90 20, 60 30, 70 44 S 92 58, 88 62" stroke-dasharray="2 3"/></svg></div>
+      <div class="deco" style="--x:4%;--y:48%;--s:62px;--d:.35;--r:-28deg;--t:11s"><svg viewBox="0 0 64 64"><circle cx="16" cy="48" r="9"/><circle cx="48" cy="48" r="9"/><path d="M22 41 L44 10 M42 41 L20 10"/><circle cx="32" cy="27" r="1.6" class="f"/></svg></div>
+      <div class="deco" style="--x:66%;--y:62%;--s:120px;--d:.1;--r:-8deg;--t:18s"><svg viewBox="0 0 120 60"><path d="M4 40 Q60 -6 116 34" stroke-width="10" opacity=".35"/><path d="M14 30 l0 6 M24 23 l0 8 M34 18 l0 6 M44 14 l0 8 M54 12 l0 6 M64 12 l0 8 M74 13 l0 6 M84 16 l0 8 M94 21 l0 6 M104 27 l0 8"/></svg></div>
+      <div class="deco" style="--x:16%;--y:74%;--s:52px;--d:.45;--r:10deg;--t:10s"><svg viewBox="0 0 64 64"><rect x="18" y="8" width="28" height="6" rx="2"/><rect x="18" y="50" width="28" height="6" rx="2"/><path d="M22 14 L22 50 M42 14 L42 50"/><path d="M22 20 L42 26 M22 28 L42 34 M22 36 L42 42" opacity=".6"/></svg></div>
+      <div class="deco" style="--x:86%;--y:82%;--s:84px;--d:.3;--r:6deg;--t:14s"><svg viewBox="0 0 64 96"><path d="M20 10 Q32 4 44 10 Q54 22 48 36 Q44 46 50 60 Q52 70 46 74 L18 74 Q12 70 14 60 Q20 46 16 36 Q10 22 20 10 Z"/><path d="M32 74 L32 88 M22 90 L42 90"/></svg></div>
+      <div class="deco star" style="--x:36%;--y:6%;--s:22px;--d:.6;--r:0deg;--t:6s"><svg viewBox="0 0 24 24"><path class="f" d="M12 2l2 7.5L22 12l-8 2.5L12 22l-2-7.5L2 12l8-2.5z"/></svg></div>
+      <div class="deco star" style="--x:56%;--y:44%;--s:16px;--d:.7;--r:0deg;--t:7s"><svg viewBox="0 0 24 24"><path class="f" d="M12 2l2 7.5L22 12l-8 2.5L12 22l-2-7.5L2 12l8-2.5z"/></svg></div>
+      <div class="deco star" style="--x:44%;--y:88%;--s:20px;--d:.55;--r:0deg;--t:8s"><svg viewBox="0 0 24 24"><path class="f" d="M12 2l2 7.5L22 12l-8 2.5L12 22l-2-7.5L2 12l8-2.5z"/></svg></div>
+      <div class="deco" style="--x:40%;--y:30%;--s:34px;--d:.4;--r:30deg;--t:12s"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="20"/><circle cx="27" cy="32" r="3" class="f"/><circle cx="37" cy="32" r="3" class="f"/></svg></div>
+    </div>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div>
+          <p class="eyebrow" id="greeting">Hola</p>
+          <h2 class="view-title" id="viewTitle">Armario</h2>
+          <div class="pager" id="pager" aria-label="Secciones"></div>
+        </div>
+        <button class="avatar-btn" id="avatarBtn" aria-label="Perfil"></button>
+      </div>
+      <div class="demo-ribbon" id="demoRibbon" hidden><span>✦ Modo demo · armario de ejemplo</span><button id="demoExit">Salir</button></div>
+    </header>
+
+    <main id="view" class="view"></main>
+
+    <nav class="tabbar" aria-label="Secciones">
+      <span class="tab-indicator" aria-hidden="true"></span>
+      <button data-tab="closet" class="active"><svg viewBox="0 0 24 24"><path d="M12 5.5a1.8 1.8 0 1 1 1.8 1.8c-.8 0-1.8.5-1.8 1.4v1L3.4 15.5c-.8.5-.4 1.5.5 1.5h16.2c.9 0 1.3-1 .5-1.5L12 9.7"/></svg><span>Armario</span></button>
+      <button data-tab="dress"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.8" r="2.3"/><path d="M8.5 9.5 12 8l3.5 1.5L17 15h-2l-.5 6h-5L9 15H7z"/></svg><span>Vestidor</span></button>
+      <button data-tab="vistelo" class="tab-ai"><span class="tab-orb"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg></span><span>Vistelo AI</span></button>
+      <button data-tab="shop"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span>Drops</span></button>
+      <button data-tab="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1-3.6 3.8-5.5 7-5.5s6 1.9 7 5.5"/></svg><span>Perfil</span></button>
+    </nav>
+  </div>
+
+  <!-- Hoja inferior reutilizable -->
+  <div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
+  <section id="sheet" class="sheet" hidden role="dialog" aria-modal="true"></section>
+  <div id="toast" class="toast" hidden></div>
+
+  <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/*" multiple hidden>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
