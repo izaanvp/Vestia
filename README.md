@@ -60,14 +60,14 @@ No hay cuentas, claves ni costes.
 
 ### Lector web propio (opcional)
 
-Algunas tiendas bloquean a los lectores automáticos, y el lector público tiene un límite de peticiones. Si quieres más fiabilidad, despliega gratis tu propio lector en Cloudflare Workers con el archivo [`proxy/worker.js`](proxy/worker.js). Después pega su dirección en **Perfil → Vistelo AI → Qué sale de tu iPhone → Lector web propio**.
+Algunas tiendas bloquean a los lectores automáticos, y el lector público tiene un límite de peticiones. Si quieres más fiabilidad, despliega gratis tu propio lector en Cloudflare Workers con el archivo [`worker.js`](worker.js). Después pega su dirección en **Perfil → Vistelo AI → Qué sale de tu iPhone → Lector web propio**.
 
 ## Publicar en GitHub Pages
 
 1. Crea un repositorio nuevo llamado `vestia` en GitHub.
-2. Sube el contenido de esta carpeta: `index.html`, `css/`, `js/`, `icons/`, `proxy/`, `manifest.json`, `sw.js`, `.nojekyll` y `.gitignore`. La carpeta `.claude/` es solo para pruebas locales y no hace falta subirla.
+2. Sube todos los archivos de esta carpeta (todos van sueltos, sin subcarpetas: es más fácil subirlos desde la web de GitHub). La carpeta oculta `.claude/` es solo para pruebas locales y no hace falta subirla.
 3. Ve a **Settings → Pages → Build and deployment**, elige *Deploy from a branch*, la rama `main` y la carpeta `/ (root)`.
-4. Al cabo de un minuto la app estará en `https://TU-USUARIO.github.io/vestia/`.
+4. Al cabo de un minuto la app estará en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/` (respeta mayúsculas y minúsculas).
 
 Desde la terminal:
 

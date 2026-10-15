@@ -1,8 +1,8 @@
 // Service worker: guarda la app para que funcione sin conexión.
-const CACHE = 'vestia-v10';
-const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/core.js', 'js/db.js', 'js/color.js', 'js/advisor.js',
-  'js/closet.js', 'js/dress.js', 'js/fitting.js', 'js/skin.js', 'js/skinui.js', 'js/bodyui.js', 'js/demo.js', 'js/wear.js', 'js/cutout.js', 'js/scanner.js', 'js/swipe.js', 'js/intro.js', 'js/vistelo.js', 'js/shop.js', 'js/profile.js',
-  'js/vision.js', 'js/vision-text.json', 'js/web.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'vestia-v11';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'core.js', 'db.js', 'color.js', 'advisor.js',
+  'closet.js', 'dress.js', 'fitting.js', 'skin.js', 'skinui.js', 'bodyui.js', 'demo.js', 'wear.js', 'cutout.js', 'scanner.js', 'swipe.js', 'intro.js', 'vistelo.js', 'shop.js', 'profile.js',
+  'vision.js', 'vision-text.json', 'web.js', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
