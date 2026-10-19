@@ -140,6 +140,7 @@ function addFab() {
   const wrap = document.createElement('div');
   wrap.className = 'fab-wrap';
   wrap.innerHTML = `
+    <button class="fab-option" data-act="look" style="--d:2">${ICON.person}<span>Foto de un look</span></button>
     <button class="fab-option" data-act="scan" style="--d:1">${ICON.camera}<span>Escanear con la cámara</span></button>
     <button class="fab-option" data-act="upload" style="--d:0">${ICON.image}<span>Subir fotos</span></button>
     <button class="fab" aria-label="Añadir prendas" aria-expanded="false"><span>+</span></button>`;
@@ -152,7 +153,8 @@ function addFab() {
   fab.addEventListener('click', (e) => { e.stopPropagation(); toggle(!wrap.classList.contains('open')); });
   $$('.fab-option', wrap).forEach((b) => b.addEventListener('click', () => {
     toggle(false);
-    if (b.dataset.act === 'scan') startScan(); else $('#fileInput').click();
+    if (b.dataset.act === 'look') import('./lookscan.js').then((m) => m.openLookScan());
+    else if (b.dataset.act === 'scan') startScan(); else $('#fileInput').click();
   }));
   $('#app').appendChild(wrap);
 }
@@ -366,7 +368,9 @@ export function showItem(it) {
       ${spec('En looks', inOutfits)}
       ${spec('Coste por uso', perWear ? `${perWear.toFixed(2).replace('.', ',')} €` : '—')}
       ${spec('Último uso', it.lastWorn ? new Date(it.lastWorn).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '—')}
+      ${it.ref ? spec('Referencia', esc(it.ref)) : ''}
     </div>
+    ${it.link ? `<a class="btn ghost block shop-link" href="${esc(it.link)}" target="_blank" rel="noopener">${ICON.link} Ver en ${esc(it.shop || 'la tienda')}</a>` : ''}
 
     ${fit !== null ? `<p class="section-label">Encaje con tu paleta · ${esc(season)}</p>
       <div class="meter"><i style="width:${fit}%"></i></div>

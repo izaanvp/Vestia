@@ -18,8 +18,24 @@ export function bodyOf(profile) {
     beard: !!b.beard,
     face: b.face ?? (b.figure && b.figure !== 'neutro'),
     pose: profile.pose || 'relajada',
+    customPose: profile.customPose || null,
+    headOn: !!profile.headOn,
     chosen: !!profile.body,
   };
+}
+
+// Tu cabeza recortada (face.js): { src, eye:[x,y], chin:[x,y], w, h, adj:{scale,dy} }
+let HEAD = null;
+export const setHead = (rec) => { HEAD = rec; };
+// Coloca tu cabeza en la del maniquí: los ojos a la altura de sus ojos y la barbilla en su barbilla
+function headImage(h, [cx, cy, , ry], uid) {
+  // Un poco más grande y más baja que la cabeza dibujada: con una cara real, el cuello estilizado del maniquí parece demasiado largo
+  const eyeY = cy + 4, chinY = cy + ry * 0.95 + 5;
+  const s = ((chinY - eyeY) / Math.max(1, h.chin[1] - h.eye[1])) * 1.06 * (h.adj?.scale || 1);
+  const x = cx - h.eye[0] * s, y = eyeY + (h.adj?.dy || 0) - h.eye[1] * s;
+  const f = (n) => n.toFixed(1);
+  return `<ellipse cx="${cx}" cy="${f(chinY + 3)}" rx="${f(ry * 0.42)}" ry="4" fill="#000" opacity=".16" filter="url(#blur-${uid})"/>
+    <image class="own-head" href="${h.src}" x="${f(x)}" y="${f(y)}" width="${f(h.w * s)}" height="${f(h.h * s)}"/>`;
 }
 
 // Recorta los márgenes vacíos de la imagen para que encaje bien en el cuerpo.
@@ -259,7 +275,8 @@ function footPath(chain, out = -1) {
 // photo: { src, x, y, w, h, P } para vestir tu propia foto en lugar del maniquí
 export function mannequinSVG({ skin = '#d4a37f', body = {}, worn = {}, bare = false, mode = 'real', photo = null }) {
   const figure = FIG[body.figure] ? body.figure : 'neutro';
-  const P = photo?.P || posedFig(figure, body.pose);
+  const P = photo?.P || posedFig(figure, body.pose, body.customPose);
+  const ownHead = !bare && !photo && body.headOn && HEAD?.src ? HEAD : null;
   const k = BUILDS[body.build] || 1;
   const hairColor = HAIR[body.hairColor] || HAIR.Castaño;
   const s = shades(skin);
@@ -283,6 +300,8 @@ export function mannequinSVG({ skin = '#d4a37f', body = {}, worn = {}, bare = fa
     if (mode === 'real' && slot === 'shoes') return photoLayer(slot, w, P);
     return garmentSVG(slot, { P, uid, item: w.item, fabric: w.fabric, photo: w.src, slot });
   };
+  // Parte de la manga del codo hacia abajo: va por encima del antebrazo (que a su vez va por encima del cuerpo de la prenda)
+  const front = (slot) => (mode === 'real' && !bare && worn[slot]?.real?.front ? `<image class="cloth real" data-slot="${slot}" href="${worn[slot].real.front}" x="0" y="0" width="300" height="640"/>` : '');
   const bootsOver = worn.shoes && /boots/.test(garmentKind(worn.shoes.item));
   if (photo) {
     // Tu foto de fondo y tus prendas encima (solo las que se adaptan al cuerpo)
@@ -290,7 +309,7 @@ export function mannequinSVG({ skin = '#d4a37f', body = {}, worn = {}, bare = fa
     return `<svg viewBox="0 0 300 640" xmlns="http://www.w3.org/2000/svg" class="mannequin photo-body" role="img" aria-label="Tu foto con tu outfit">
   <defs><filter id="soft-${uid}" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".22"/></filter></defs>
   <image href="${photo.src}" x="${photo.x.toFixed(1)}" y="${photo.y.toFixed(1)}" width="${photo.w.toFixed(1)}" height="${photo.h.toFixed(1)}" preserveAspectRatio="none"/>
-  <g filter="url(#soft-${uid})">${bootsOver ? '' : real('shoes')}${real('bottom')}${bootsOver ? real('shoes') : ''}${real('one')}${real('top')}${real('outer')}${real('bag')}</g>
+  <g filter="url(#soft-${uid})">${bootsOver ? '' : real('shoes')}${real('bottom')}${bootsOver ? real('shoes') : ''}${real('one')}${real('top')}${real('outer')}${front('one')}${front('top')}${front('outer')}${real('bag')}</g>
 </svg>`;
   }
 
@@ -323,6 +342,13 @@ export function mannequinSVG({ skin = '#d4a37f', body = {}, worn = {}, bare = fa
   const sheen = (chain) => limbPath(chain.map((q) => ({ ...q, x: q.x + q.r * 0.3, r: q.r * 0.16 })), { capStart: 'round' });
   const gloss = [P.arm, armR, P.leg, legR].map((c) => `<path d="${sheen(c)}" fill="#fff" opacity=".13"/>`).join('')
     + `<path d="M${150 - 14} ${sy + 18} C${150 - 18} ${cY + 30} ${150 - 16} ${wY} ${150 - 10} ${P.hipY + 10}" stroke="#fff" stroke-opacity=".12" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+  // Antebrazos y manos por delante de la prenda (manos en la cintura, brazos que cruzan por delante…)
+  const elbowAt = (c) => { const a = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y), b = Math.hypot(c[2].x - c[1].x, c[2].y - c[1].y); return a / (a + b); };
+  const dressed = mode === 'real' && !bare && ['top', 'outer', 'one'].some((sl) => worn[sl]?.real?.src);
+  const foreArms = dressed ? (() => {
+    const fa = [P.arm, armR].map((c) => limbPath(c, { from: elbowAt(c) - 0.03, capStart: 'round' }));
+    return `<g fill="${skinFill}" stroke="${s.deep}" stroke-opacity=".2" stroke-width="1">${fa.map((d) => `<path d="${d}"/>`).join('')}${handPath(P.arm, -1)}${handPath(armR, 1)}</g>${fa.map(limbShade).join('')}`;
+  })() : '';
   // Sombras de contacto bajo los pies
   const contact = [P.leg, legR].map((l, i) => { const a = l[l.length - 1]; return `<ellipse cx="${(a.x + (i ? 1 : -1) * a.r * 1.2).toFixed(1)}" cy="${(a.y + 21).toFixed(1)}" rx="${(a.r * 2.6).toFixed(1)}" ry="2.6" fill="#000" opacity=".22"/>`; }).join('');
 
@@ -335,9 +361,10 @@ export function mannequinSVG({ skin = '#d4a37f', body = {}, worn = {}, bare = fa
     ${cyl}
     <radialGradient id="floor-${uid}"><stop offset="0" stop-color="#000" stop-opacity=".3"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
     <filter id="soft-${uid}" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2.5" stdDeviation="2.5" flood-opacity=".2"/></filter>
+    <filter id="blur-${uid}"><feGaussianBlur stdDeviation="2"/></filter>
   </defs>
   <ellipse cx="150" cy="618" rx="${92 * k}" ry="11" fill="url(#floor-${uid})"/>
-  ${hair.back}
+  ${ownHead ? '' : hair.back}
   <g transform="translate(150 0) scale(${k} 1) translate(-150 0)">
     ${contact}
     <g fill="${skinFill}" stroke="${s.deep}" stroke-opacity=".2" stroke-width="1">
@@ -354,16 +381,18 @@ export function mannequinSVG({ skin = '#d4a37f', body = {}, worn = {}, bare = fa
   </g>
   <g fill="${skinFill}" stroke="${s.deep}" stroke-opacity=".2" stroke-width="1">
     <path d="${neck}"/>
-    <ellipse cx="${P.head[0] - P.head[2] * 1.0}" cy="${P.head[1] + 4}" rx="4.2" ry="7.5"/><ellipse cx="${P.head[0] + P.head[2] * 1.0}" cy="${P.head[1] + 4}" rx="4.2" ry="7.5"/>
-    <path d="${headPath(P.head)}"/>
+    ${ownHead ? '' : `<ellipse cx="${P.head[0] - P.head[2] * 1.0}" cy="${P.head[1] + 4}" rx="4.2" ry="7.5"/><ellipse cx="${P.head[0] + P.head[2] * 1.0}" cy="${P.head[1] + 4}" rx="4.2" ry="7.5"/>
+    <path d="${headPath(P.head)}"/>`}
   </g>
-  <path d="${neck}" fill="url(#cyl-${uid})"/><path d="${headPath(P.head)}" fill="url(#cyl-${uid})" opacity=".7"/>
+  <path d="${neck}" fill="url(#cyl-${uid})"/>${ownHead ? '' : `<path d="${headPath(P.head)}" fill="url(#cyl-${uid})" opacity=".7"/>
   ${body.face ? faceLayer(P.head, s, figure, hairColor) : ''}${body.beard ? beardLayer(P.head, hairColor) : ''}
-  ${hair.front}
+  ${hair.front}`}
   <g filter="url(#soft-${uid})">
     <g transform="translate(150 0) scale(${k} 1) translate(-150 0)">
-      ${bootsOver ? '' : layer('shoes')}${layer('bottom')}${bootsOver ? layer('shoes') : ''}${layer('one')}${layer('top')}${layer('outer')}${layer('bag')}
+      ${bootsOver ? '' : layer('shoes')}${layer('bottom')}${bootsOver ? layer('shoes') : ''}${layer('one')}${layer('top')}${layer('outer')}
+      ${foreArms}${front('one')}${front('top')}${front('outer')}${layer('bag')}
     </g>
+    ${ownHead ? headImage(ownHead, P.head, uid) : ''}
     ${layer('acc')}
   </g>
 </svg>`;

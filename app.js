@@ -14,6 +14,7 @@ import { buildStage, playIntro, openCurtain, skipCurtain } from './intro.js';
 import * as CU from './cutout.js';
 import { loadDiary } from './diary.js';
 import { loadBodyPhoto } from './photobody.js';
+import { loadHead } from './face.js';
 import { checkPrices, updateBadge } from './prices.js';
 import * as SY from './sync.js';
 
@@ -121,6 +122,7 @@ function showApp() {
     state.outfits = await db.getAll('outfits');
     await loadDiary();
     await loadBodyPhoto();
+    await loadHead();
     const ids = new Set(state.items.map((i) => i.id));
     state.worn = Object.fromEntries(Object.entries(state.profile.lastWorn || {}).filter(([, id]) => ids.has(id)));
   } catch { toast('No se pudo abrir el almacenamiento local'); }

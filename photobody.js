@@ -20,8 +20,9 @@ export function wearBody() {
   const photo = customBody();
   if (photo) return photo;
   const b = bodyOf(state.profile);
-  if (!b.pose || b.pose === 'relajada') return null;
-  return { key: `${b.figure}:${b.pose}`, P: posedFig(b.figure, b.pose) };
+  if (!b.pose || b.pose === 'relajada' || (b.pose === 'propia' && !b.customPose)) return null;
+  const key = b.pose === 'propia' ? `${b.figure}:propia:${JSON.stringify(b.customPose)}` : `${b.figure}:${b.pose}`;
+  return { key, P: posedFig(b.figure, b.pose, b.customPose) };
 }
 
 export function openBodyPhoto(onDone) {

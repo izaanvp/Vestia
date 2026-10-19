@@ -124,6 +124,40 @@ export async function readPage(url, { force = false } = {}) {
   return page;
 }
 
+// Busca un producto en tiendas (DuckDuckGo; si falla, Bing). Devuelve [{ title, url, site, desc, product }]
+// Solo se envía el texto de la búsqueda (marca, tipo de prenda, color…), nunca fotos.
+export async function searchProducts(query, { force = false } = {}) {
+  const key = `search:${query}`;
+  if (!force) { const c = cacheGet(key); if (c) return c; }
+  const clean = (t) => t.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_#>]/g, '').replace(/\s+/g, ' ').trim();
+  let out = [];
+  try {
+    const md = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=es-es`);
+    const re = /## \[([^\]]+)\]\(https:\/\/duckduckgo\.com\/l\/\?uddg=([^&)]+)[^)]*\)\s*\n([\s\S]*?)(?=\n## |$)/g;
+    let m;
+    while ((m = re.exec(md))) {
+      const url = decodeURIComponent(m[2]);
+      const body = clean(m[3]).replace(/^\S*\.\S*\/\S*\s*/, '');
+      out.push({ title: clean(m[1]), url, site: host(url), desc: body.slice(0, 170) });
+    }
+  } catch { /* se prueba con Bing */ }
+  if (!out.length) {
+    const md = await fetchText(`https://www.bing.com/search?format=rss&setlang=es&cc=ES&q=${encodeURIComponent(query)}`);
+    const re = /### \[([^\]]+)\]\(([^)]+)\)\s*\n+([\s\S]*?)(?=\n### |\s*$)/g;
+    let m;
+    while ((m = re.exec(md))) { const url = decodeBing(m[2]); out.push({ title: m[1].trim(), url, site: host(url), desc: clean(m[3]).slice(0, 170) }); }
+  }
+  // Primero las fichas de producto (no portadas, ni Wikipedia, ni redes)
+  const isProduct = (u) => /-p\d{5,}|\/p\/|\/product|\/producto|\/prod\/|\/dp\/|\/item|\/articulo|\d{6,}\.html/i.test(u);
+  out = out
+    .filter((r) => r.site && !/duckduckgo|bing\.com|wikipedia|youtube|facebook|instagram|tiktok|pinterest|twitter|x\.com|reddit/.test(r.site))
+    .map((r) => ({ ...r, product: isProduct(r.url) }))
+    .sort((a, b) => b.product - a.product)
+    .slice(0, 8);
+  cacheSet(key, out);
+  return out;
+}
+
 // Tiempo actual (Open-Meteo, sin clave). Devuelve { temp, code, rain, label }.
 export async function weather() {
   const c = cacheGet('weather'); if (c) return c;

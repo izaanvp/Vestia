@@ -31,8 +31,10 @@ function maskOf(img, maxSide = 180) {
   const m = new Uint8Array(w * h);
   let sx = 0, n = 0, top = h, bot = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 110) { m[y * w + x] = 1; sx += x; n++; if (y < top) top = y; if (y > bot) bot = y; }
-  return { m, w, h, k, cx: n ? sx / n : w / 2, top, bot, area: n };
+  return { m, w, h, k, cx: n ? sx / n : w / 2, top, bot, area: n, img };
 }
+// Prendas sin mangas (no se buscan mangas en la foto)
+const SLEEVELESS = ['tank', 'corset', 'vest', 'dress-slip', 'gown'];
 // Tramos opacos de una fila (se unen huecos de 1 px)
 function runs(M, y) {
   const out = [];
@@ -60,7 +62,7 @@ const median = (arr) => { const s = [...arr].sort((a, b) => a - b); return s.len
 // · extendida en "T" (mangas abiertas): la axila es el salto de anchura entre tronco y mangas;
 // · colgada o en maniquí invisible (mangas caídas junto al cuerpo): el hombro es donde el contorno
 //   deja de abrirse en horizontal y empieza a bajar.
-function analyzeTop(M) {
+function analyzeTop(M, kind = '') {
   const { top, bot, cx } = M;
   const H = bot - top + 1;
   const hw = new Array(M.h).fill(0), mid = new Array(M.h).fill(cx), L = new Array(M.h).fill(cx), R = new Array(M.h).fill(cx), nRuns = new Array(M.h).fill(0);
@@ -130,6 +132,27 @@ function analyzeTop(M) {
     shoulder = Math.round((pts[0].y + pts[1].y) / 2);
     cxT = cx + (pts[1].e - pts[0].e) / 2;
     chest = ((pts[0].e + pts[1].e) / 2) * 0.93;
+    // Con las mangas pegadas al cuerpo, ese contorno incluye las mangas. El ancho del cuerpo se mide
+    // abajo, donde los puños se separan del bajo (con una máscara más fina); si nunca se separan,
+    // se estima por proporción (una manga plana mide ~0,6 del medio cuerpo).
+    if (!SLEEVELESS.includes(kind) && M.img) {
+      const F2 = maskOf(M.img, 460), kf = F2.w / M.w, halves = [];
+      for (let y = Math.round(F2.top + (F2.bot - F2.top) * 0.5); y <= F2.bot; y++) {
+        const rs = runs(F2, y);
+        if (rs.length < 3) continue;
+        const c = cxT * kf, i = rs.findIndex(([a, b]) => a <= c && b >= c);
+        if (i <= 0 || i >= rs.length - 1) continue;
+        halves.push([(rs[i][1] - rs[i][0]) / 2 / kf, (rs[i][0] + rs[i][1]) / 2 / kf]);
+      }
+      if (halves.length >= 3 && median(halves.map((h) => h[0])) < chest * 0.85) {
+        chest = median(halves.map((h) => h[0])) * 1.03;
+        cxT = median(halves.map((h) => h[1]));
+      } else {
+        const yMid = Math.round(top + H * 0.55);
+        const half = (R[yMid] - L[yMid]) / 2;
+        if (half > chest * 0.9) chest = Math.min(chest, half / 1.62);
+      }
+    }
     // Axila: donde aparece el hueco entre manga y cuerpo, o a una profundidad típica
     armpit = Math.round(shoulder + (bot - shoulder) * 0.28);
     for (let y = shoulder + 2; y < shoulder + (bot - shoulder) * 0.45; y++) if (nRuns[y] >= 3) { armpit = Math.max(shoulder + 2, y - 1); break; }
@@ -165,6 +188,9 @@ function analyzeTop(M) {
       for (const j of [x > 0 ? i - 1 : -1, x < M.w - 1 ? i + 1 : -1, y > 0 ? i - M.w : -1, y < M.h - 1 ? i + M.w : -1]) if (j >= 0 && out[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
     }
     if (pts.length < M.area * 0.025) return null;
+    // Zona de la manga en la máscara (para recortarla aparte del cuerpo)
+    const region = new Uint8Array(M.w * M.h);
+    for (const [x, y] of pts) region[y * M.w + x] = 1;
     const rootTop = [cxT + side * chest, shoulder];
     const rootBot = [cxT + side * chest, armpit];
     const rm = lerpP(rootTop, rootBot, 0.5);
@@ -182,12 +208,13 @@ function analyzeTop(M) {
     const c0 = [tc[0] + nx * off, tc[1] + ny * off];
     const tipTop = [c0[0] + nx * half, c0[1] + ny * half], tipBot = [c0[0] - nx * half, c0[1] - ny * half];
     const low = pts.map((p) => p[1]).sort((a, b) => a - b)[Math.floor(pts.length * 0.97)];
-    return { rootTop, rootBot, tipTop, tipBot, len: Math.hypot(tipTop[0] - rootTop[0], tipTop[1] - rootTop[1]), low };
+    return { rootTop, rootBot, tipTop, tipBot, len: Math.hypot(tipTop[0] - rootTop[0], tipTop[1] - rootTop[1]), low, region };
   });
   // Con las mangas caídas, una sola "manga" suele ser un pliegue (prenda doblada): se descarta
   if (hanging && sleeves.filter(Boolean).length === 1) sleeves.fill(null);
+  if (SLEEVELESS.includes(kind)) sleeves.fill(null);
   sleeveLow = Math.max(armpit, ...sleeves.filter(Boolean).map((s) => s.low));
-  return { kind: 'top', top, bot: hem, cx: cxT, armpit, shoulder, chest, torso, midT, sleeves, hanging };
+  return { kind: 'top', top, bot: hem, cx: cxT, armpit, shoulder, chest, torso, midT, sleeves, hanging, sleeveLow };
 }
 
 // Parte de abajo: pantalón (con perneras) o falda
@@ -273,7 +300,7 @@ export function garmentFit(item, slot) {
     const img = await loadImg(item.img);
     const M = maskOf(img);
     if (slot === 'bottom') { const A = analyzeBottom(M); return { ...fitOf(item, A), ...riseOf(item, A), kind: A.kind }; }
-    if (['top', 'outer', 'one'].includes(slot)) return { ...fitOf(item, analyzeTop(M)), kind: 'top' };
+    if (['top', 'outer', 'one'].includes(slot)) return { ...fitOf(item, analyzeTop(M, garmentKind(item))), kind: 'top' };
     return null;
   })().catch(() => null);
   infoCache.set(key, p);
@@ -281,7 +308,8 @@ export function garmentFit(item, slot) {
 }
 
 // ---------- Malla y deformación ----------
-function drawTri(ctx, img, s, d) {
+// sc: escala del destino (1 = lienzo final; 1/SCALE = lienzo pequeño para calcular sombras)
+function drawTri(ctx, img, s, d, sc = 1) {
   const [[x0, y0], [x1, y1], [x2, y2]] = s, [[u0, v0], [u1, v1], [u2, v2]] = d;
   const den = x0 * (y1 - y2) + x1 * (y2 - y0) + x2 * (y0 - y1);
   if (Math.abs(den) < 1e-6) return;
@@ -297,9 +325,9 @@ function drawTri(ctx, img, s, d) {
   ctx.save();
   ctx.beginPath();
   const p0 = grow(u0, v0), p1 = grow(u1, v1), p2 = grow(u2, v2);
-  ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.closePath();
+  ctx.moveTo(p0[0] * sc, p0[1] * sc); ctx.lineTo(p1[0] * sc, p1[1] * sc); ctx.lineTo(p2[0] * sc, p2[1] * sc); ctx.closePath();
   ctx.clip();
-  ctx.setTransform(a, b, c, dd, e, f);
+  ctx.setTransform(a * sc, b * sc, c * sc, dd * sc, e * sc, f * sc);
   // Solo el trozo de foto que cubre el triángulo (mucho más rápido en el iPhone)
   const bx = Math.max(0, Math.floor(Math.min(x0, x1, x2)) - 2), by = Math.max(0, Math.floor(Math.min(y0, y1, y2)) - 2);
   const bw = Math.min(img.width, Math.ceil(Math.max(x0, x1, x2)) + 2) - bx, bh = Math.min(img.height, Math.ceil(Math.max(y0, y1, y2)) + 2) - by;
@@ -307,13 +335,201 @@ function drawTri(ctx, img, s, d) {
   ctx.restore();
 }
 // Dibuja una rejilla src → dst (matrices de puntos [fila][columna])
-function drawGrid(ctx, img, S, D) {
+function drawGrid(ctx, img, S, D, sc = 1) {
   for (let r = 0; r < S.length - 1; r++) for (let c = 0; c < S[r].length - 1; c++) {
-    drawTri(ctx, img, [S[r][c], S[r][c + 1], S[r + 1][c]], [D[r][c], D[r][c + 1], D[r + 1][c]]);
-    drawTri(ctx, img, [S[r][c + 1], S[r + 1][c + 1], S[r + 1][c]], [D[r][c + 1], D[r + 1][c + 1], D[r + 1][c]]);
+    drawTri(ctx, img, [S[r][c], S[r][c + 1], S[r + 1][c]], [D[r][c], D[r][c + 1], D[r + 1][c]], sc);
+    drawTri(ctx, img, [S[r][c + 1], S[r + 1][c + 1], S[r + 1][c]], [D[r][c + 1], D[r + 1][c + 1], D[r + 1][c]], sc);
   }
 }
 const toCanvas = ([x, y]) => [x * SCALE, y * SCALE];
+const W_VB = 300, H_VB = 640; // medidas del maniquí (viewBox)
+function layer(w = W_VB * SCALE, h = H_VB * SCALE) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').imageSmoothingQuality = 'high';
+  return c;
+}
+const free = (...cs) => cs.forEach((c) => { if (c) { c.width = 0; c.height = 0; } });
+
+// ---------- Brazos y piernas con articulaciones suaves ----------
+// Geometría de una cadena (hombro → codo → muñeca, o cadera → rodilla → tobillo)
+function limbGeom(chain) {
+  const segs = []; let total = 0;
+  for (let i = 0; i < chain.length - 1; i++) {
+    const a = chain[i], b = chain[i + 1], len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    segs.push({ a, b, len, start: total, dx: (b.x - a.x) / len, dy: (b.y - a.y) / len });
+    total += len;
+  }
+  // Bisectriz de cada articulación: separa lo que va antes (brazo) de lo que va después (antebrazo)
+  const joints = [];
+  for (let i = 1; i < segs.length; i++) {
+    const p = segs[i - 1], s = segs[i];
+    const bx = p.dx + s.dx, by = p.dy + s.dy, m = Math.hypot(bx, by);
+    if (m > 0.05) joints.push({ x: s.a.x, y: s.a.y, d: s.start, bx: bx / m, by: by / m, p, s, bend: Math.acos(Math.max(-1, Math.min(1, p.dx * s.dx + p.dy * s.dy))) });
+  }
+  return { segs, total, joints };
+}
+// Punto, dirección (girando poco a poco cerca de cada articulación) y grosor en t (0 = arriba, 1 = final)
+function frameAt(G, t, blend) {
+  const d = t * G.total;
+  let si = G.segs.findIndex((s) => d <= s.start + s.len);
+  if (si < 0) si = G.segs.length - 1;
+  const s = G.segs[si], u = d - s.start;
+  let dx = s.dx, dy = s.dy;
+  if (si > 0 && u < blend) { const p = G.segs[si - 1], w = 0.5 * (1 - Math.max(0, u) / blend); dx = dx * (1 - w) + p.dx * w; dy = dy * (1 - w) + p.dy * w; }
+  if (si < G.segs.length - 1 && s.len - u < blend) { const q = G.segs[si + 1], w = 0.5 * (1 - (s.len - u) / blend); dx = dx * (1 - w) + q.dx * w; dy = dy * (1 - w) + q.dy * w; }
+  const m = Math.hypot(dx, dy) || 1;
+  return { x: s.a.x + s.dx * u, y: s.a.y + s.dy * u, dx: dx / m, dy: dy / m, r: s.a.r + (s.b.r - s.a.r) * Math.max(0, Math.min(1, u / s.len)), d };
+}
+// En la parte de dentro del codo o de la rodilla la tela se pliega: ningún punto cruza la bisectriz
+function foldClamp(G, pt, c, d, win) {
+  for (const J of G.joints) {
+    if (Math.abs(d - J.d) > win) continue;
+    const before = d < J.d;
+    const v = (pt[0] - J.x) * J.bx + (pt[1] - J.y) * J.by;
+    const vc = (c[0] - J.x) * J.bx + (c[1] - J.y) * J.by;
+    if (before ? v <= 0 || vc > 0 : v >= 0 || vc < 0) continue;
+    const tau = Math.max(0, Math.min(1, -vc / (v - vc)));
+    pt = [c[0] + (pt[0] - c[0]) * tau, c[1] + (pt[1] - c[1]) * tau];
+  }
+  return pt;
+}
+// Hasta dónde llegan las piernas (con su pose) a una altura y: para que faldas y abrigos las cubran
+function legExtent(P, y) {
+  let ext = 0;
+  for (const leg of [P.leg, legR(P)]) for (let i = 0; i < leg.length - 1; i++) {
+    const a = leg[i], b = leg[i + 1];
+    if ((y - a.y) * (y - b.y) > 0 || a.y === b.y) continue;
+    const u = (y - a.y) / (b.y - a.y);
+    ext = Math.max(ext, Math.abs(a.x + (b.x - a.x) * u - 150) + a.r + (b.r - a.r) * u);
+  }
+  return ext;
+}
+
+// ---------- Volumen ----------
+// Sombra "almohadillada": la tela se oscurece hacia sus bordes (más a la derecha, la luz viene de la
+// izquierda) y se aclara un poco en el centro. Se calcula con la forma real de cada pieza.
+function shadeMap(shape, { R = 8, dark = 0.28, lift = 0.07 } = {}) {
+  const w = W_VB, h = H_VB;
+  const c = layer(w, h), x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(shape, 0, 0, w, h);
+  const a = x.getImageData(0, 0, w, h).data;
+  const INF = 1e6, d = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) d[i] = a[i * 4 + 3] > 100 ? INF : 0;
+  const at = (xx, yy) => (xx < 0 || yy < 0 || xx >= w || yy >= h ? 0 : d[yy * w + xx]);
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+    const i = yy * w + xx; if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(xx - 1, yy) + 1, at(xx, yy - 1) + 1, at(xx - 1, yy - 1) + 1.414, at(xx + 1, yy - 1) + 1.414);
+  }
+  for (let yy = h - 1; yy >= 0; yy--) for (let xx = w - 1; xx >= 0; xx--) {
+    const i = yy * w + xx; if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(xx + 1, yy) + 1, at(xx, yy + 1) + 1, at(xx + 1, yy + 1) + 1.414, at(xx - 1, yy + 1) + 1.414);
+  }
+  const out = x.createImageData(w, h);
+  for (let yy = 1; yy < h - 1; yy++) for (let xx = 1; xx < w - 1; xx++) {
+    const i = yy * w + xx, di = d[i]; if (!di) continue;
+    const gx = d[i + 1] - d[i - 1], gy = d[i + w] - d[i - w], g = Math.hypot(gx, gy);
+    const nx = g ? -gx / g : 0; // normal hacia fuera (x)
+    const edge = Math.pow(1 - Math.min(di, R) / R, 1.6);
+    const sh = dark * edge * (1 + 0.45 * nx);
+    const li = lift * smooth(Math.min(1, Math.max(0, (di - R * 0.6) / (R * 1.6))));
+    const v = li - sh;
+    const k = i * 4;
+    if (v < 0) { out.data[k + 3] = Math.min(255, -v * 255); } else { out.data[k] = out.data[k + 1] = out.data[k + 2] = 255; out.data[k + 3] = v * 255; }
+  }
+  x.putImageData(out, 0, 0);
+  return c;
+}
+function applyShade(target, map) {
+  const x = target.getContext('2d');
+  x.save(); x.globalCompositeOperation = 'source-atop'; x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  x.drawImage(map, 0, 0, target.width, target.height); x.restore();
+}
+// Pliegues en la parte cóncava de codos y rodillas cuando se doblan (dentro de la «V»)
+function foldLines(ctx, G, half, upTo) {
+  for (const J of G.joints) {
+    if (J.bend < 0.3 || J.d > upTo * G.total) continue;
+    let vx = J.s.dx - J.p.dx, vy = J.s.dy - J.p.dy;
+    const m = Math.hypot(vx, vy) || 1; vx /= m; vy /= m;
+    const px = -vy, py = vx;
+    const k = Math.min(1, J.bend / 1.3);
+    ctx.save(); ctx.globalCompositeOperation = 'source-atop'; ctx.lineCap = 'round';
+    for (let i = -1; i <= 1; i++) {
+      const c0 = [J.x + vx * half * 0.2 + px * i * half * 0.32, J.y + vy * half * 0.2 + py * i * half * 0.32];
+      const c1 = [c0[0] + vx * half * (0.75 - Math.abs(i) * 0.2), c0[1] + vy * half * (0.75 - Math.abs(i) * 0.2)];
+      ctx.strokeStyle = `rgba(0,0,0,${(0.17 * k).toFixed(3)})`; ctx.lineWidth = 1.5 * SCALE;
+      ctx.beginPath(); ctx.moveTo(c0[0] * SCALE, c0[1] * SCALE);
+      ctx.quadraticCurveTo(((c0[0] + c1[0]) / 2 + px * 1.5 * i) * SCALE, ((c0[1] + c1[1]) / 2 + py * 1.5 * i) * SCALE, c1[0] * SCALE, c1[1] * SCALE);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// Forro: un tubo del color de la prenda por debajo de la manga o la pernera. Si la foto tiene un
+// hueco o un borde transparente, se ve tela y no la piel del maniquí.
+function tube(ctx, G, ta, tb, pad, color, blend) {
+  if (tb <= ta) return;
+  const n = Math.max(6, Math.round(((tb - ta) * G.total) / 4));
+  const L = [], R = [];
+  for (let i = 0; i <= n; i++) {
+    const F = frameAt(G, lerp(ta, tb, i / n), blend), h = F.r + pad, c = [F.x, F.y];
+    L.push(foldClamp(G, [F.x - F.dy * h, F.y + F.dx * h], c, F.d, h * 2.5));
+    R.push(foldClamp(G, [F.x + F.dy * h, F.y - F.dx * h], c, F.d, h * 2.5));
+  }
+  ctx.fillStyle = color; ctx.beginPath();
+  [...L, ...R.reverse()].forEach(([x, y], i) => (i ? ctx.lineTo(x * SCALE, y * SCALE) : ctx.moveTo(x * SCALE, y * SCALE)));
+  ctx.closePath(); ctx.fill();
+}
+function bandFill(ctx, rowsLR, color) {
+  ctx.fillStyle = color; ctx.beginPath();
+  rowsLR.forEach(([l, , y], i) => (i ? ctx.lineTo(l * SCALE, y * SCALE) : ctx.moveTo(l * SCALE, y * SCALE)));
+  [...rowsLR].reverse().forEach(([, r, y]) => ctx.lineTo(r * SCALE, y * SCALE));
+  ctx.closePath(); ctx.fill();
+}
+// Color medio (algo más oscuro, como el interior de la tela) de una pieza
+function liningColor(c) {
+  const s = layer(12, 12), x = s.getContext('2d', { willReadFrequently: true });
+  x.drawImage(c, 0, 0, 12, 12);
+  const d = x.getImageData(0, 0, 12, 12).data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] / 255; r += d[i] * a; g += d[i + 1] * a; b += d[i + 2] * a; n += a; }
+  free(s);
+  if (!n) return 'rgba(0,0,0,0)';
+  return `rgb(${Math.round((r / n) * 0.9)},${Math.round((g / n) * 0.9)},${Math.round((b / n) * 0.9)})`;
+}
+
+// ---------- Piezas de la prenda ----------
+// Separa las mangas de la foto (con un borde suave): así al deformar una manga no se cuela un trozo del cuerpo.
+function splitTop(img, M, A) {
+  const regs = A.sleeves.map((s) => s?.region || null);
+  if (!regs.some(Boolean)) return { torso: img, sleeves: [null, null] };
+  const small = layer(M.w, M.h), sx = small.getContext('2d');
+  const copy = (mask, op) => {
+    const c = layer(img.width, img.height), x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    x.globalCompositeOperation = op; x.drawImage(mask, 0, 0);
+    return c;
+  };
+  const masks = regs.map((reg) => {
+    if (!reg) return null;
+    const id = sx.createImageData(M.w, M.h);
+    for (let y = 0; y < M.h; y++) for (let x = 0; x < M.w; x++) {
+      // Un píxel de margen para que el borde suave no corte la manga
+      let on = reg[y * M.w + x];
+      if (!on) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < M.w && ny < M.h && reg[ny * M.w + nx]) { on = 1; break; } }
+      if (on) id.data[(y * M.w + x) * 4 + 3] = 255;
+    }
+    sx.clearRect(0, 0, M.w, M.h); sx.putImageData(id, 0, 0);
+    const big = layer(img.width, img.height), bx = big.getContext('2d');
+    bx.imageSmoothingEnabled = true; bx.drawImage(small, 0, 0, img.width, img.height);
+    return big;
+  });
+  const sleeves = masks.map((m) => (m ? copy(m, 'destination-in') : null));
+  free(small, ...masks);
+  // El cuerpo usa la foto entera: su malla solo toma la columna del cuerpo (y así sus costados quedan
+  // macizos, sin un borde semitransparente donde empezaban las mangas)
+  return { torso: img, sleeves };
+}
 
 // ---------- Prendas de arriba ----------
 // Una prenda plana mide de ancho la mitad de su contorno, pero de frente el cuerpo solo enseña
@@ -342,11 +558,14 @@ function hemRange(kind, P) {
 // Hasta dónde llega la manga (0 = hombro, 1 = muñeca)
 function sleeveRange(kind) {
   if (['tee', 'polo'].includes(kind)) return [0.12, 0.45];
-  if (['knit', 'turtleneck', 'cardigan', 'hoodie', 'sweatshirt', 'blazer', 'denimjacket', 'leatherjacket', 'bomber', 'jacket', 'puffer', 'coat', 'trench'].includes(kind)) return [0.82, 1.02];
+  // Las prendas de manga larga llegan a la muñeca (aunque en la foto la manga esté recogida)
+  if (['knit', 'turtleneck', 'cardigan', 'hoodie', 'sweatshirt', 'blazer', 'denimjacket', 'leatherjacket', 'bomber', 'jacket', 'puffer', 'coat', 'trench'].includes(kind)) return [0.95, 1.03];
   return [0.1, 1.02];
 }
 const clamp = (v, [a, b]) => Math.min(b, Math.max(a, v));
-function renderTop(ctx, img, M, A, P, { ease, slot, kind, fit = 'normal' }) {
+// Devuelve { back, front }: back = cuerpo + mangas; front = la parte de la manga del codo hacia abajo,
+// que va por encima de todo (así un antebrazo que cruza por delante del cuerpo tapa la prenda).
+function renderTop(img, M, A, P, { ease, slot, kind, fit = 'normal' }) {
   const f = img.width / M.w; // de coordenadas de la máscara a píxeles de la foto
   const src = ([x, y]) => [x * f, y * f];
   const chestY = P.shoulderY + 30;
@@ -365,107 +584,153 @@ function renderTop(ctx, img, M, A, P, { ease, slot, kind, fit = 'normal' }) {
     return shoulderT - Math.min(26, up <= 10 ? up : 10 + (up - 10) * 0.35);
   };
   const bodyHW = (y) => hwAt(P.rows, Math.min(y, P.crotchY));
+  const parts = splitTop(img, M, A);
 
-  const shading = [];
-  // Tronco: filas más densas cerca del hombro, donde hay más detalle (cuello, hombros)
-  const tRows = 24, tCols = 6;
-  const TS = [], TD = [];
-  let minX = 300, maxX = 0;
+  // Cuerpo: filas más densas cerca del hombro, donde hay más detalle (cuello, hombros)
+  const tRows = 26, tCols = 6, TS = [], TD = [];
   const ys = [];
   const nUp = A.shoulder > A.top + 1 ? 4 : 0;
   for (let r = 0; r < nUp; r++) ys.push(lerp(A.top - 1.5, A.shoulder, r / nUp));
   for (let r = 0; r <= tRows - nUp; r++) ys.push(lerp(A.shoulder, A.bot + 1.5, r / (tRows - nUp)));
+  // Hasta la cadera (o la cintura en vestidos) se ciñe al maniquí con su holgura; por debajo puede
+  // abrirse (vuelo de vestidos y abrigos) y siempre cubre las piernas, aunque estén abiertas
+  const flareFrom = slot === 'one' ? P.waistY + 10 : slot === 'outer' ? P.hipY + 10 : Infinity;
   for (const y of ys) {
     const yi = Math.round(y);
     const sh = A.torso(yi), m = A.midT(yi);
     const tY = tyc(y);
     const above = tY < P.shoulderY + 8;
     let thw = above ? sh * k : Math.max(bodyHW(tY) + ease, sh * k);
-    // El cuerpo no puede tapar los brazos: hasta la cadera (o la cintura en vestidos) se ciñe al
-    // maniquí con su holgura; por debajo puede abrirse (vuelo de vestidos y abrigos)
-    const flareFrom = slot === 'one' ? P.waistY + 10 : slot === 'outer' ? P.hipY + 10 : Infinity;
     if (!above) thw = Math.min(thw, bodyHW(tY) + ease + (tY < flareFrom ? 4 : 4 + (tY - flareFrom) * 0.6));
-    minX = Math.min(minX, 150 - thw); maxX = Math.max(maxX, 150 + thw);
-    // La malla sobresale un poco del borde de la prenda para que el contorno salga suave (no cortado)
-    const e = 1.5, she = sh + e, thwe = thw * (she / Math.max(1, sh));
+    if (tY > P.hipY) thw = Math.max(thw, legExtent(P, tY) + ease * 0.5 + 1);
+    // La malla sobresale un poco del borde de la prenda para que el contorno salga suave (no cortado).
+    // Si las mangas cuelgan pegadas al cuerpo, ese "borde" es la sombra entre manga y cuerpo: no se toma.
+    const seam = A.hanging && A.sleeves.some(Boolean) && yi <= A.sleeveLow;
+    const e = seam ? -0.6 : 1.5, she = sh + e, thwe = seam ? thw : thw * (she / Math.max(1, sh));
     TS.push(Array.from({ length: tCols + 1 }, (_, c) => src([m - she + (2 * she * c) / tCols, y])));
     TD.push(Array.from({ length: tCols + 1 }, (_, c) => toCanvas([150 - thwe + (2 * thwe * c) / tCols, tY])));
   }
-  // Las mangas se calculan primero: su arranque (sisa) va debajo del cuerpo y el resto encima,
-  // como una manga de verdad (así no se ve costura en el pecho ni el cuerpo tapa los brazos)
-  const sleeveGrids = [];
+  const back = layer(), bx = back.getContext('2d');
+  const torsoC = layer(), tx = torsoC.getContext('2d');
+  // Forro del cuerpo de la axila al bajo (no en el escote, que puede dejar ver la piel a propósito)
+  const lin = liningColor(parts.torso);
+  const ly0 = Math.max(P.shoulderY + 34, tyc(A.armpit)), ly1 = hemT - 3, lr = [];
+  for (let i = 0; i <= 12 && ly1 > ly0; i++) { const y = lerp(ly0, ly1, i / 12); const h = bodyHW(y) + 0.5; lr.push([150 - h, 150 + h, y]); }
+  if (lr.length) bandFill(tx, lr, lin);
+  // Canesú: con mangas, los hombros del maniquí siempre quedan cubiertos (en las prendas fotografiadas
+  // puestas el hombro cae en diagonal). El centro queda libre para el escote.
+  if (A.sleeves.some(Boolean)) {
+    const ap = Math.max(P.shoulderY + 24, Math.min(P.shoulderY + 48, tyc(A.armpit)));
+    for (const side of [-1, 1]) {
+      const nx = 150 + side * (P.neck.hw + 7);
+      const pts = [[nx, shoulderT + 0.5], [150 + side * (P.shoulder + ease * 0.4 - 3), shoulderT + 1.5], [150 + side * (bodyHW(ap) + 1), ap], [nx, ap]];
+      tx.fillStyle = lin; tx.beginPath();
+      pts.forEach(([x, y], i) => (i ? tx.lineTo(x * SCALE, y * SCALE) : tx.moveTo(x * SCALE, y * SCALE)));
+      tx.closePath(); tx.fill();
+    }
+  }
+  drawGrid(tx, parts.torso, TS, TD);
+  applyShade(torsoC, shadeMap(torsoC, { R: 10, dark: 0.24, lift: 0.06 }));
+
+  // Mangas: siguen el brazo del maniquí (con su pose), se doblan en el codo y lo cubren entero
+  const sleeves = [], fronts = [];
+  const ROWS = 16, COLS = 3, ROOT_S = 0.25, FADE_S = 0.4;
   A.sleeves.forEach((sl, idx) => {
-    if (!sl) return;
+    const simg = parts.sleeves[idx];
+    if (!sl || !simg) return;
     const side = idx === 0 ? 1 : -1; // 1: brazo izquierdo de la pantalla
     const arm = idx === 0 ? P.arm : armR(P);
-    const armLen = Math.hypot(arm[1].x - arm[0].x, arm[1].y - arm[0].y) + Math.hypot(arm[2].x - arm[1].x, arm[2].y - arm[1].y);
+    const G = limbGeom(arm);
+    const elbowT = G.segs[0].len / G.total;
     // Largo de la manga: el de la foto, dentro de lo normal para el tipo de prenda. Las mangas
     // casi tan largas como el cuerpo son largas aunque en la foto estén algo dobladas.
-    // (con la escala más prudente: la del ancho o la del largo del cuerpo ya ajustado)
-    let tNat = 0.04 + (sl.len * Math.min(k * KV_SLEEVE, (kv * KV_SLEEVE) / KV_TOP)) / armLen;
+    let tNat = 0.04 + (sl.len * Math.min(k * KV_SLEEVE, (kv * KV_SLEEVE) / KV_TOP)) / G.total;
     const torsoLen = Math.min(A.bot - A.shoulder, (A.armpit - A.shoulder) * 3);
     if (sl.len / torsoLen > 0.58) tNat = Math.max(tNat, 0.92);
     const tEnd = clamp(tNat, sleeveRange(kind));
-    // La costura del hombro tapa la parte de arriba del brazo del maniquí
+    const t0 = fit === 'oversize' ? 0.13 : fit === 'holgada' ? 0.08 : 0.04; // hombro caído
+    const blend = Math.max(12, Math.min(26, arm[1].r * 2 + ease));
+    const nOut = (F) => [-side * F.dy, side * F.dx]; // hacia fuera del brazo
+    // Hombro: la costura pasa por encima del hombro del maniquí y rodea la parte de arriba del brazo
+    const F0 = frameAt(G, 0.06, blend), n0 = nOut(F0);
     const shoulderPt = [150 - side * (P.shoulder + ease * 0.6), shoulderT];
-    // Punto de control: la curva del hombro rodea la parte de arriba del brazo
-    const capPt = [arm[0].x - side * (arm[0].r + 2 + ease * 0.5), arm[0].y - arm[0].r * 0.8];
-    const out03 = (() => { const q = chainPoint(arm, 0.04 + 0.3 * (tEnd - 0.04)); const h = q.r + ease * 0.7 + 2; return [q.x - side * q.dy * h, q.y + side * q.dx * h]; })();
-    const apY = Math.min(P.shoulderY + 62, Math.max(P.shoulderY + 22, tyc(A.armpit)));
+    const capR = arm[0].r + 2 + ease * 0.5;
+    const capPt = [arm[0].x + n0[0] * capR - F0.dx * arm[0].r * 0.7, arm[0].y + n0[1] * capR - F0.dy * arm[0].r * 0.7];
+    const tRoot = t0 + 0.3 * (tEnd - t0);
+    const Fr = frameAt(G, tRoot, blend), nr = nOut(Fr), halfR = Fr.r + ease * 0.7 + 2;
+    const out03 = [Fr.x + nr[0] * halfR, Fr.y + nr[1] * halfR];
+    // Axila en el costado del cuerpo; si el brazo se levanta, la sisa sube con él
+    let apY = Math.min(P.shoulderY + 62, Math.max(P.shoulderY + 22, tyc(A.armpit)));
+    apY = Math.max(P.shoulderY + 14, Math.min(apY, Fr.y - nr[1] * halfR + 6));
     const armpitPt = [150 - side * (bodyHW(apY) + ease), apY];
     const wTip = (Math.hypot(sl.tipTop[0] - sl.tipBot[0], sl.tipTop[1] - sl.tipBot[1]) / 2) * k;
-    const rows = 10, cols = 3;
     const S = [], D = [];
-    for (let r = 0; r <= rows; r++) {
-      const s = r / rows;
+    let kSplit = -1;
+    for (let r = 0; r <= ROWS; r++) {
+      const s = r / ROWS;
       const sTop = lerpP(sl.rootTop, sl.tipTop, s), sBot = lerpP(sl.rootBot, sl.tipBot, s);
-      const t0 = fit === 'oversize' ? 0.13 : fit === 'holgada' ? 0.08 : 0.04; // hombro caído
       const t = t0 + s * (tEnd - t0);
-      const p = chainPoint(arm, t);
+      if (t <= elbowT - 0.06) kSplit = r;
+      const F = frameAt(G, t, blend), n = nOut(F);
       // Ancho: el del brazo con holgura; si el puño de la foto es más ancho (manga farol, oversize),
       // la manga se va abriendo hacia él
-      const base = p.r + ease * 0.7 + 2;
-      const half = s > 0.3 ? Math.max(base, lerp(base, Math.min(wTip, p.r * 2.6 + ease), (s - 0.3) / 0.7)) : base;
-      // Borde exterior e interior de la manga (perpendicular a la dirección del brazo)
-      const outer = [p.x - side * p.dy * half, p.y + side * p.dx * half];
-      const inner = [p.x + side * p.dy * half, p.y - side * p.dx * half];
-      // Cerca del hombro la manga sale de la sisa del tronco
-      const w = smooth(Math.min(1, s / 0.3));
-      const u = Math.min(1, s / 0.3);
+      const base = F.r + ease * 0.7 + 2;
+      const half = s > 0.3 ? Math.max(base, lerp(base, Math.min(wTip, F.r * 2.6 + ease), (s - 0.3) / 0.7)) : base;
+      const outer = [F.x + n[0] * half, F.y + n[1] * half];
+      const inner = [F.x - n[0] * half, F.y - n[1] * half];
+      // Cerca del hombro la manga sale de la sisa del cuerpo
+      const w = smooth(Math.min(1, s / 0.3)), u = Math.min(1, s / 0.3);
       const bez = [0, 1].map((i) => (1 - u) * (1 - u) * shoulderPt[i] + 2 * (1 - u) * u * capPt[i] + u * u * out03[i]);
       const dOut = s < 0.3 ? bez : outer, dIn = lerpP(armpitPt, inner, w);
-      const ext = (c) => -0.05 + (1.1 * c) / cols; // un poco más allá de los bordes de la manga
-      S.push(Array.from({ length: cols + 1 }, (_, c) => src(lerpP(sTop, sBot, ext(c)))));
-      D.push(Array.from({ length: cols + 1 }, (_, c) => toCanvas(lerpP(dOut, dIn, ext(c)))));
+      const ext = (c) => -0.05 + (1.1 * c) / COLS; // un poco más allá de los bordes de la manga
+      S.push(Array.from({ length: COLS + 1 }, (_, c) => src(lerpP(sTop, sBot, ext(c)))));
+      D.push(Array.from({ length: COLS + 1 }, (_, c) => {
+        const p = lerpP(dOut, dIn, ext(c));
+        return toCanvas(s < 0.3 ? p : foldClamp(G, p, [F.x, F.y], F.d, half * 2.5));
+      }));
     }
-    sleeveGrids.push({ S, D, cols });
-  });
-  const ROOT = 3; // filas de la sisa (s < 0,3)
-  // La parte de debajo llega hasta el final del fundido, para que fuera del cuerpo no quede ningún hueco
-  sleeveGrids.forEach(({ S, D }) => drawGrid(ctx, img, S.slice(0, ROOT + 3), D.slice(0, ROOT + 3)));
-  drawGrid(ctx, img, TS, TD);
-  // El resto de la manga, en una capa aparte: sombra solo en la manga y entrada fundida (sin cortes)
-  sleeveGrids.forEach(({ S, D, cols }) => {
-    const off = document.createElement('canvas'); off.width = ctx.canvas.width; off.height = ctx.canvas.height;
-    const o = off.getContext('2d'); o.imageSmoothingQuality = 'high';
-    drawGrid(o, img, S.slice(ROOT), D.slice(ROOT));
-    const mid = (row) => [(row[0][0] + row[cols][0]) / 2, (row[0][1] + row[cols][1]) / 2];
-    o.save(); o.globalCompositeOperation = 'source-atop';
-    const g = o.createLinearGradient(D[6][0][0], D[6][0][1], D[6][cols][0], D[6][cols][1]);
-    g.addColorStop(0, 'rgba(0,0,0,.24)'); g.addColorStop(0.3, 'rgba(0,0,0,.03)'); g.addColorStop(0.55, 'rgba(255,255,255,.1)'); g.addColorStop(0.8, 'rgba(0,0,0,.05)'); g.addColorStop(1, 'rgba(0,0,0,.26)');
-    o.fillStyle = g; o.fillRect(0, 0, off.width, off.height); o.restore();
-    const a = mid(D[ROOT]), b = mid(D[Math.min(D.length - 1, ROOT + 2)]);
-    const fade = o.createLinearGradient(a[0], a[1], b[0], b[1]);
+    // Sombra calculada con la manga entera (así no aparece una línea donde se separan las partes)
+    const lo = layer(W_VB, H_VB);
+    drawGrid(lo.getContext('2d'), simg, S, D, 1 / SCALE);
+    const map = shadeMap(lo, { R: 6, dark: 0.3, lift: 0.07 });
+    const halfElbow = arm[1].r + ease * 0.7 + 2;
+    const sl_lin = liningColor(simg);
+    const tAt = (row) => t0 + (row / ROWS) * (tEnd - t0);
+    const piece = (from, to) => {
+      const c = layer(), x = c.getContext('2d');
+      // El forro acaba antes que la manga: así no asoma en puños cortados en diagonal
+      tube(x, G, Math.max(0.02, tAt(from)), Math.min(tAt(Math.min(ROWS, to - 1)), tEnd - 0.07), 1, sl_lin, blend);
+      drawGrid(x, simg, S.slice(from, to), D.slice(from, to));
+      foldLines(x, G, halfElbow, tEnd);
+      applyShade(c, map);
+      return c;
+    };
+    const rootRow = Math.round(ROOT_S * ROWS);
+    // La parte de la sisa va debajo del cuerpo (sin huecos); el resto encima, entrando fundida
+    const under = piece(0, rootRow + 4);
+    const whole = piece(0, ROWS + 1), wx = whole.getContext('2d');
+    const mid = (row) => [(row[0][0] + row[COLS][0]) / 2, (row[0][1] + row[COLS][1]) / 2];
+    const fa = mid(D[rootRow]), fb = mid(D[Math.round(FADE_S * ROWS)]);
+    const fade = wx.createLinearGradient(fa[0], fa[1], fb[0], fb[1]);
     fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
-    o.globalCompositeOperation = 'destination-in'; o.fillStyle = fade; o.fillRect(0, 0, off.width, off.height);
-    ctx.drawImage(off, 0, 0);
+    wx.save(); wx.globalCompositeOperation = 'destination-in'; wx.fillStyle = fade; wx.fillRect(0, 0, whole.width, whole.height); wx.restore();
+    bx.drawImage(under, 0, 0);
+    sleeves.push(whole);
+    if (tEnd > elbowT + 0.05 && kSplit >= Math.round(FADE_S * ROWS) - 1) fronts.push(piece(kSplit, ROWS + 1));
+    free(lo, map, under);
   });
-
-  return { shading, torso: { x0: minX, x1: maxX, y0: tyc(A.top), y1: tyc(A.bot) }, hemY: tyc(A.bot) };
+  bx.drawImage(torsoC, 0, 0);
+  sleeves.forEach((c) => bx.drawImage(c, 0, 0));
+  let front = null;
+  if (fronts.length) { front = layer(); const fx = front.getContext('2d'); fronts.forEach((c) => fx.drawImage(c, 0, 0)); }
+  free(torsoC, ...sleeves, ...fronts);
+  if (parts.torso !== img) free(parts.torso);
+  parts.sleeves.forEach((c) => c && free(c));
+  return { back, front };
 }
 
 // ---------- Prendas de abajo ----------
-function renderBottom(ctx, img, M, A, P, { ease, kind, fit = 'normal', rise = 'medio' }) {
+function renderBottom(img, M, A, P, { ease, kind, fit = 'normal', rise = 'medio' }) {
   const f = img.width / M.w;
   const src = ([x, y]) => [x * f, y * f];
   const waistT = waistFor(rise, P); // tiro bajo en la cadera, tiro alto en la cintura
@@ -478,50 +743,69 @@ function renderBottom(ctx, img, M, A, P, { ease, kind, fit = 'normal', rise = 'm
     const hipHalf = (hb - ha) / 2;
     if (hipHalf > A.waist * 0.8) k = (bodyHW(P.crotchY - 8) + ease) / hipHalf;
   }
-  const shading = [];
+  const out = layer(), ctx = out.getContext('2d');
   if (A.kind === 'skirt') {
     const limit = P.leg[2].y + 10;
     const range = hemRange(kind, P)?.slice() || [P.crotchY + 5, limit];
     if (range[0] < P.crotchY) range[0] = P.crotchY + 5; // un pantalón tratado como falda (sin perneras visibles)
     const hemT = clamp(waistT + (A.bot - A.top) * k * KV_BOTTOM, [range[0], Math.min(range[1], limit)]);
-    const kv = (hemT - waistT) / ((A.bot - A.top) || 1), vk = 1;
-    const rows = 18, cols = 6, S = [], D = [];
+    const kv = (hemT - waistT) / ((A.bot - A.top) || 1);
+    const rows = 20, cols = 6, S = [], D = [];
     for (let r = 0; r <= rows; r++) {
       const y = lerp(A.top, A.bot, r / rows);
       const [a, b] = A.full(Math.round(y));
       const sh = (b - a) / 2, mid = (a + b) / 2;
-      const tY = waistT + (y - A.top) * kv * vk;
-      const thw = Math.max(bodyHW(tY) + ease, sh * k);
+      const tY = waistT + (y - A.top) * kv;
+      // La cinturilla se ciñe al cuerpo; el vuelo empieza a abrirse desde la cadera
+      let thw = Math.max(bodyHW(tY) + ease, sh * k);
+      thw = Math.min(thw, bodyHW(tY) + ease + Math.max(0, tY - waistT) * 0.35 + (tY > P.hipY ? (tY - P.hipY) * 0.5 : 0));
+      thw = Math.max(thw, legExtent(P, tY) + ease * 0.5 + 1);
       const she = sh + 1.5, thwe = thw * (she / Math.max(1, sh));
       S.push(Array.from({ length: cols + 1 }, (_, c) => src([mid - she + (2 * she * c) / cols, y])));
       D.push(Array.from({ length: cols + 1 }, (_, c) => toCanvas([150 - thwe + (2 * thwe * c) / cols, tY])));
     }
+    const lr = D.slice(1, -1).map((row) => [row[0][0] / SCALE + 2, row[cols][0] / SCALE - 2, row[0][1] / SCALE]);
+    bandFill(ctx, lr, liningColor(img));
     drawGrid(ctx, img, S, D);
-    return { shading, torso: { x0: 150 - bodyHW(waistT) - 30, x1: 150 + bodyHW(waistT) + 30, y0: waistT, y1: waistT + (A.bot - A.top) * kv * vk } };
+    applyShade(out, shadeMap(out, { R: 9, dark: 0.26, lift: 0.06 }));
+    return { back: out, front: null };
   }
-  // Pantalón: caderas (cinturilla → entrepierna) + dos perneras
+  // Pantalón: caderas (cinturilla → entrepierna) ceñidas al cuerpo + dos perneras que siguen las piernas
   const crotchT = P.crotchY + 2;
-  const hipRows = 6, cols = 6, S = [], D = [];
+  const hipRows = 8, cols = 6, S = [], D = [];
   for (let r = 0; r <= hipRows; r++) {
     const y = lerp(A.top, A.crotch, r / hipRows);
     const [a, b] = A.full(Math.round(y));
     const sh = (b - a) / 2, mid = (a + b) / 2;
     const tY = lerp(waistT, crotchT, r / hipRows);
-    const thw = Math.max(bodyHW(tY) + ease, sh * k);
+    // La cinturilla abraza la cintura (nada sobresale por los lados); hacia la entrepierna gana holgura
+    const thw = Math.max(bodyHW(tY) + ease * (0.55 + 0.45 * (r / hipRows)), legExtent(P, tY) + ease * 0.4 + 1);
     const she = sh + 1.5, thwe = thw * (she / Math.max(1, sh));
     S.push(Array.from({ length: cols + 1 }, (_, c) => src([mid - she + (2 * she * c) / cols, y])));
     D.push(Array.from({ length: cols + 1 }, (_, c) => toCanvas([150 - thwe + (2 * thwe * c) / cols, tY])));
   }
+  // Forro de la cadera y de las piernas (tapa huecos de la foto, como el interior de la cinturilla)
+  const lin = liningColor(img);
+  bandFill(ctx, D.slice(1).map((row) => [row[0][0] / SCALE + 1.5, row[cols][0] / SCALE - 1.5, row[0][1] / SCALE]), lin);
   drawGrid(ctx, img, S, D);
   const hipHW = (D[hipRows][cols][0] - D[hipRows][0][0]) / 2 / SCALE; // ancho final de la cadera
-  const legLenT = P.leg[2].y - P.leg[0].y;
-  [['L', P.leg, 1], ['R', legR(P), -1]].forEach(([which, leg, side]) => {
+  const range = hemRange(kind, P) || [P.crotchY + 12, P.leg[2].y + 10];
+  const hemY = clamp(crotchT + (A.bot - A.crotch) * k * KV_BOTTOM, [Math.max(range[0], crotchT + 10), range[1]]);
+  const legGeo = [['L', P.leg, 1], ['R', legR(P), -1]].map(([which, leg, side]) => {
+    const G = limbGeom(leg);
+    const blend = Math.max(14, Math.min(28, leg[1].r * 1.8 + ease));
+    const tStart = Math.max(0, (crotchT - leg[0].y) / G.total);
+    // Largo hasta el bajo medido a lo largo de la pierna (con la pose, la pierna puede ir inclinada)
+    const legH = Math.max(1, leg[leg.length - 1].y - leg[0].y);
+    const tEnd = Math.min(1.04, (hemY - leg[0].y) / legH);
+    return { which, leg, side, G, blend, tStart, tEnd };
+  });
+  // Primero los forros de las dos piernas (si una pernera tapa a la otra, el forro no pisa la tela)
+  legGeo.forEach(({ G, blend, tStart, tEnd }) => tube(ctx, G, tStart, tEnd - 0.05, 1, lin, blend));
+  const legs = [];
+  legGeo.forEach(({ which, leg, side, G, blend, tStart, tEnd }) => {
     const fn = which === 'L' ? A.legL : A.legR;
-    const tStart = (crotchT - leg[0].y) / legLenT;
-    const range = hemRange(kind, P) || [P.crotchY + 12, P.leg[2].y + 10];
-    const hemY = clamp(crotchT + (A.bot - A.crotch) * k * KV_BOTTOM, [Math.max(range[0], crotchT + 10), range[1]]);
-    const tEnd = Math.min(1.04, (hemY - leg[0].y) / legLenT);
-    const rows = 14, lc = 3, LS = [], LD = [];
+    const rows = 18, lc = 3, LS = [], LD = [];
     let last = null;
     for (let r = 0; r <= rows; r++) {
       const s = r / rows;
@@ -536,24 +820,40 @@ function renderBottom(ctx, img, M, A, P, { ease, kind, fit = 'normal', rise = 'm
       }
       last = [a, b];
       const half0 = (b - a) / 2;
-      const p = chainPoint(leg, lerp(tStart, tEnd, s));
-      const half = Math.max(p.r + ease * 0.6, half0 * k * LEG_WIDTH[fit]);
-      let outer = [p.x - side * p.dy * half, p.y + side * p.dx * half];
-      let inner = [p.x + side * p.dy * half, p.y - side * p.dx * half];
+      const F = frameAt(G, lerp(tStart, tEnd, s), blend);
+      // Siempre más ancha que la pierna: la pierna nunca asoma por los lados
+      const half = Math.max(F.r + ease * 0.6 + 1.5, half0 * k * LEG_WIDTH[fit]);
+      const n = [-side * F.dy, side * F.dx];
+      let outer = [F.x + n[0] * half, F.y + n[1] * half];
+      let inner = [F.x - n[0] * half, F.y - n[1] * half];
       // Arriba, la pernera sale de la cadera sin escalón
-      const w = smooth(Math.min(1, s / 0.35));
+      const w = smooth(Math.min(1, s / 0.3));
       outer = lerpP([150 - side * hipHW, crotchT], outer, w);
       inner = lerpP([150, crotchT], inner, w);
       // En la foto, el lado exterior de la pernera izquierda es el borde izquierdo
       const sOut = side > 0 ? a : b, sIn = side > 0 ? b : a;
       const ext = (c) => -0.05 + (1.1 * c) / lc;
       LS.push(Array.from({ length: lc + 1 }, (_, c) => src([lerp(sOut, sIn, ext(c)), y])));
-      LD.push(Array.from({ length: lc + 1 }, (_, c) => toCanvas(lerpP(outer, inner, ext(c)))));
+      LD.push(Array.from({ length: lc + 1 }, (_, c) => {
+        const p = lerpP(outer, inner, ext(c));
+        return toCanvas(s < 0.3 ? p : foldClamp(G, p, [F.x, F.y], F.d, half * 2.5));
+      }));
     }
     drawGrid(ctx, img, LS, LD);
-    shading.push({ poly: [...LD.map((row) => row[0]), ...LD.map((row) => row[lc]).reverse()], a: LD[7][0], b: LD[7][lc] });
+    legs.push({ G, LD, lc, half: leg[1].r + ease * 0.6 + 1.5, tEnd });
   });
-  return { shading, torso: { x0: 150 - bodyHW(waistT) - 12, x1: 150 + bodyHW(waistT) + 12, y0: waistT, y1: crotchT } };
+  applyShade(out, shadeMap(out, { R: 9, dark: 0.26, lift: 0.06 }));
+  // Línea interior de cada pernera (se ve aunque las perneras se toquen) y pliegues en las rodillas
+  ctx.save(); ctx.globalCompositeOperation = 'source-atop'; ctx.lineCap = 'round';
+  legs.forEach(({ LD, lc }) => {
+    ctx.strokeStyle = 'rgba(0,0,0,.13)'; ctx.lineWidth = 2.2 * SCALE;
+    ctx.beginPath();
+    LD.slice(4).forEach((row, i) => { const p = lerpP(row[lc - 1], row[lc], 0.55); if (i) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); });
+    ctx.stroke();
+  });
+  ctx.restore();
+  legs.forEach(({ G, half, tEnd }) => foldLines(ctx, G, half, tEnd));
+  return { back: out, front: null };
 }
 
 // ---------- Calzado y bolsos ----------
@@ -637,36 +937,9 @@ function renderBag(ctx, img, M, P, item) {
   ctx.restore();
 }
 
-// Luz y sombra: degradado "cilíndrico" en el tronco y en cada manga o pernera
-function addShading(ctx, info) {
-  ctx.save();
-  ctx.globalCompositeOperation = 'source-atop';
-  const cyl = (g) => {
-    g.addColorStop(0, 'rgba(0,0,0,.26)'); g.addColorStop(0.28, 'rgba(0,0,0,.03)');
-    g.addColorStop(0.52, 'rgba(255,255,255,.10)'); g.addColorStop(0.78, 'rgba(0,0,0,.05)'); g.addColorStop(1, 'rgba(0,0,0,.30)');
-    return g;
-  };
-  for (const s of info.shading) {
-    const path = new Path2D();
-    s.poly.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)));
-    path.closePath();
-    ctx.fillStyle = cyl(ctx.createLinearGradient(s.a[0], s.a[1], s.b[0], s.b[1]));
-    ctx.fill(path);
-  }
-  const t = info.torso;
-  if (t) {
-    ctx.fillStyle = cyl(ctx.createLinearGradient(t.x0 * SCALE, 0, t.x1 * SCALE, 0));
-    ctx.fillRect(t.x0 * SCALE, t.y0 * SCALE - 20, (t.x1 - t.x0) * SCALE, (t.y1 - t.y0) * SCALE + 40);
-    const v = ctx.createLinearGradient(0, t.y0 * SCALE, 0, t.y1 * SCALE);
-    v.addColorStop(0, 'rgba(255,255,255,.06)'); v.addColorStop(0.7, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.12)');
-    ctx.fillStyle = v;
-    ctx.fillRect(t.x0 * SCALE - 60, t.y0 * SCALE, (t.x1 - t.x0) * SCALE + 120, (t.y1 - t.y0) * SCALE);
-  }
-  ctx.restore();
-}
-
-// Devuelve { src } con la prenda colocada en el maniquí (lienzo 600 × 1280) o null si no se puede.
-// custom: { key, P } para vestir un cuerpo que no es el maniquí (p. ej. tu propia foto)
+// Devuelve { src, front } con la prenda colocada en el maniquí (lienzo de 900 × 1920) o null si no se puede.
+// src va por debajo de los antebrazos y front (la manga del codo hacia abajo) por encima.
+// custom: { key, P } para vestir un cuerpo que no es el maniquí (tu foto o el maniquí con una pose)
 export async function renderReal(item, slot, figure, trimmedSrc, custom = null) {
   if (!['top', 'outer', 'one', 'bottom', 'shoes', 'bag'].includes(slot)) return null;
   const key = `${item.id}:${slot}:${custom ? custom.key : figure}:${item.fit || ''}:${item.rise || ''}`;
@@ -676,32 +949,30 @@ export async function renderReal(item, slot, figure, trimmedSrc, custom = null) 
     const P = custom?.P || FIG[figure] || FIG.neutro;
     const M = maskOf(img);
     if (M.area < 50) return null;
-    const c = document.createElement('canvas');
-    c.width = 300 * SCALE; c.height = 640 * SCALE;
-    const ctx = c.getContext('2d');
-    ctx.imageSmoothingQuality = 'high';
-    let info;
     const kind = garmentKind(item);
     if (slot === 'shoes' || slot === 'bag') {
+      const c = layer(), ctx = c.getContext('2d');
       if (slot === 'shoes') renderShoes(ctx, img, M, P, kind); else renderBag(ctx, img, M, P, item);
-      return { src: c.toDataURL('image/png') };
+      const src = c.toDataURL('image/png'); free(c);
+      return { src };
     }
-    let fit, rise;
+    let fit, rise, res;
     if (slot === 'bottom') {
       const A = analyzeBottom(M);
       fit = fitOf(item, A).fit; rise = riseOf(item, A).rise;
       // Si el usuario dijo que era pantalón pero no se ven perneras (p. ej. doblado), se trata como falda
-      info = renderBottom(ctx, img, M, A, P, { ease: kind === 'leggings' ? 0.5 : EASE_BOTTOM[fit], kind, fit, rise });
+      res = renderBottom(img, M, A, P, { ease: kind === 'leggings' ? 0.5 : EASE_BOTTOM[fit], kind, fit, rise });
     } else {
-      const A = analyzeTop(M);
+      const A = analyzeTop(M, kind);
       fit = fitOf(item, A).fit;
       const base = EASE_TOP[fit] + (['knit', 'sweatshirt', 'hoodie'].includes(kind) ? 1.5 : 0);
       const ease = slot === 'outer' ? base + 5 : slot === 'one' ? Math.max(1, base - 1.5) : base;
-      info = renderTop(ctx, img, M, A, P, { ease, slot, kind, fit });
+      res = renderTop(img, M, A, P, { ease, slot, kind, fit });
     }
-    addShading(ctx, info);
-    return { src: c.toDataURL('image/png'), fit, rise };
-  })().catch(() => null);
+    const out = { src: res.back.toDataURL('image/png'), front: res.front ? res.front.toDataURL('image/png') : null, fit, rise };
+    free(res.back, res.front);
+    return out;
+  })().catch((e) => { console.warn('renderReal', e); return null; });
   cache.set(key, p);
   return p;
 }

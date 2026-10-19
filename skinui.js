@@ -118,8 +118,26 @@ export function openSkinSheet(onDone = () => {}) {
   $('#skinSave').addEventListener('click', () => {
     state.profile.skin = { hex: result, source, date: Date.now() };
     saveProfile();
-    closeSheet();
     toast(`Tono guardado: ${S.describe(result).text}`);
+    // Con una foto de tu cara, Vestia te ofrece ponerla en el maniquí (se usa la foto entera,
+    // no solo el óvalo: así entra toda la cabeza con el pelo)
+    if (photo) {
+      const shot = photo;
+      $('#skinBody').innerHTML = '';
+      sheet.querySelector('.skin-result')?.insertAdjacentHTML('afterend', `
+        <div class="face-offer">
+          <div><b>¿Pones tu cara en el maniquí?</b><p class="small muted">Con esta misma foto recorto tu cabeza, con el pelo, y la coloco en tu maniquí. Podrás retocar el recorte con el dedo.</p></div>
+          <div class="row"><button class="btn ghost" id="faceNo">Ahora no</button><button class="btn primary" id="faceYes">${ICON.person} Sí, poner mi cara</button></div>
+        </div>`);
+      $('#skinSave').hidden = true;
+      $('#faceNo').addEventListener('click', () => { closeSheet(); onDone(result); });
+      $('#faceYes').addEventListener('click', async () => {
+        const { openHeadTool } = await import('./face.js');
+        openHeadTool(shot, () => onDone(result));
+      });
+      return;
+    }
+    closeSheet();
     onDone(result);
   });
 }

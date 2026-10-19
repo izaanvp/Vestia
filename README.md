@@ -13,6 +13,13 @@ Vestia es una web app (PWA) para iPhone que convierte tu ropa en un armario digi
     5. Te enseña **tu prenda puesta en tu maniquí** antes de guardarla, y también un comparador antes/después.
 
     Para mejores resultados: la prenda sola (sin persona ni maniquí), extendida y sobre un fondo liso.
+  - **Foto de un look**: sube una foto de cuerpo entero **con cualquier fondo** y Vestia separa cada prenda (parte de arriba, pantalón o falda, vestido, calzado, bolso, gorro, bufanda, cinturón, gafas), la recorta y la reconoce. Después:
+    - busca la **marca** en lo que se lee en la ropa (logotipos con letras, estampados);
+    - te enseña **prendas parecidas en tiendas** (fichas de producto reales) y, si eliges una, guarda el enlace y el precio en la prenda;
+    - **Buscar por imagen**: comparte la foto de la prenda para buscarla con Google Lens;
+    - si no se ve la marca, puedes **escanear la etiqueta** (lee la marca, la referencia y la composición) o **escribir los detalles** que sepas (marca, modelo, referencia) para buscarla.
+    Al final eliges qué prendas añadir al armario o te lo pruebas directamente en el maniquí.
+  - **Fotos de tienda con modelo**: si escaneas una prenda de una foto en la que sale una persona, Vestia quita la cara, el pelo, los brazos, las piernas y las demás prendas que lleva, y deja solo la que escaneas.
   - **Escaneo en serie**: haces una foto por prenda sin salir de la cámara (puedes cambiar de categoría entre foto y foto). Cada foto se recorta y se reconoce en segundo plano mientras sigues. Al final revisas todas, corriges el tipo si hace falta y las guardas de golpe. Si eliges varias fotos de la galería, también se procesan en serie.
   - **Lectura de la etiqueta**: desde la ficha de una prenda, haz una foto a su etiqueta, encuádrala y Vestia lee la composición (por ejemplo «55 % algodón, 30 % lino, 15 % viscosa», en varios idiomas), los cuidados escritos y el país de fabricación. Los símbolos de lavado son dibujos y no se leen: si la etiqueta no trae texto de cuidados, Vistelo los recomienda según el material.
   - **Estadísticas**: valor del armario, veces puestas, coste por uso, lo que más te pones, prendas olvidadas, colores, zonas, marcas, materiales y un mapa de actividad de 12 semanas.
@@ -27,7 +34,9 @@ Vestia es una web app (PWA) para iPhone que convierte tu ropa en un armario digi
     - barba y rasgos de la cara.
   - **Tu ropa real en el maniquí** (modo «Real», por defecto): Vestia analiza la silueta de la foto de cada prenda (cuello, hombros, axilas, mangas, cintura, entrepierna y perneras) y la deforma con una malla para que se adapte a la postura y las medidas del maniquí. Las mangas siguen los brazos y las perneras siguen las piernas. El largo respeta la prenda y lo normal para su tipo: una camiseta llega a la cadera, un vaquero al tobillo y un vestido corto a medio muslo. Se le añade luz y sombra para darle volumen.
   - **Ropa a escala**: cada prenda se pone con su **caída** (ajustada, normal, holgada u oversize) y, en pantalones y faldas, con su **tiro** (bajo, medio o alto). Vestia lo deduce del nombre («slim», «oversize», «mom», «tiro bajo»…) y de la forma de la foto (lo ancho que es el pecho, lo baja que cae la sisa o lo ancho que es el bajo de la pernera). Una camiseta oversize cae con el hombro caído y más ancha que el cuerpo; un vaquero de tiro bajo se queda en la cadera y uno de tiro alto sube a la cintura. Si se equivoca, lo cambias en la ficha de la prenda (**Caída** y **Tiro**).
-  - **Poses**: relajada, manos en la cintura, pasarela, paseo, saludo y brazos abiertos. La ropa, el calzado y el bolso siguen la pose (con las manos en la cintura, el bolso cuelga del codo).
+  - **Poses**: relajada, manos en la cintura, pasarela, paseo, saludo y brazos abiertos, y **tu propia pose**: arrastras las manos y los pies del maniquí (los codos y las rodillas se doblan solos) o la copias de una foto tuya de cuerpo entero.
+  - **La ropa sigue la pose como en una persona**: las mangas se doblan en el codo y las perneras en la rodilla (con pliegues en la parte de dentro). Si el antebrazo cruza por delante del cuerpo (manos en la cintura), la manga y la mano quedan por delante de la prenda. La cinturilla abraza la cintura, sin esquinas que sobresalgan. Bajo cada manga, pernera y cuerpo hay un **forro** del color de la prenda: aunque la foto tenga un hueco o un borde transparente, nunca asoma la piel del maniquí por los lados. El volumen (luz y sombra) se calcula con la forma real de cada pieza.
+  - **Tu cara en el maniquí**: al terminar el test de tono de piel con una foto, Vestia te pregunta si quieres poner tu cara. Recorta tu cabeza entera con el pelo usando la **foto completa** (no solo el óvalo de la cara: si el pelo se sale del recuadro, sigue entrando; también vale una foto de cuerpo entero), la endereza y la coloca sobre el cuello del maniquí. Incluye una **herramienta de recorte**: borrar o recuperar con el dedo, deshacer, tamaño y altura en el maniquí, con vista previa. También desde el Probador («Pon tu cara») y desde «Tu maniquí». Así el maniquí es un mini tú con tu ropa y la pose que quieras.
   - **Maniquí detallado**: ojos con iris y brillo, pestañas, labios, manos con pulgar, pies en tres cuartos, clavículas, articulaciones, sombras de contacto y brillo en el pelo. La ropa se dibuja con el triple de resolución.
   - **Calzado y bolsos en el maniquí**: los zapatos (fotografiados de lado) se ponen en cada pie con la puntera hacia fuera, como en un figurín de moda; las botas cubren la pierna. El bolso cuelga de la mano según su tipo (de mano, tote, clutch o mochila).
   - **Probador con tu foto**: con una foto tuya de cuerpo entero y de frente, Vestia detecta tu postura y tus medidas (hombros, brazos, cintura, caderas, piernas y pies) y te pone tus prendas encima con el mismo motor que al maniquí. Cambias entre «Maniquí» y «Mi foto» en el Probador. La foto se queda en tu iPhone.
@@ -65,7 +74,9 @@ Vistelo AI no usa servicios de IA externos: los modelos se descargan una vez y f
 | Reconocer prendas, estampados, materiales y estilo | MobileCLIP S0 (Apple) | ~25 MB |
 | Recortar el fondo de las fotos | RMBG-1.4 (BRIA AI) | ~44 MB |
 | Leer la etiqueta de la prenda | Tesseract (español e inglés) | ~6 MB |
-| Detectar tu postura (probador con tu foto) | MediaPipe Pose Landmarker lite (Google) | ~15 MB |
+| Detectar tu postura (probador con tu foto, copiar una pose) | MediaPipe Pose Landmarker lite (Google) | ~15 MB |
+| Encontrar tu cara (tu cara en el maniquí) | MediaPipe Face Landmarker (Google) | ~4 MB |
+| Separar pelo, cara y cada prenda de una persona (tu cabeza, foto de un look, fotos con modelo) | SegFormer B2 entrenado con ropa | ~29 MB |
 | Leer y crear códigos QR | jsQR y qrcode-generator | ~0,2 MB |
 
 El recorte con IA usa la gráfica del iPhone (WebGPU) cuando está disponible, y si no, el procesador. Sin el modelo de recorte, la app usa un **recorte rápido** propio que funciona bien con fondos lisos.
@@ -78,11 +89,12 @@ Tus fotos y tu armario **no salen del iPhone** (salvo que conectes tu propio ser
 
 - descargar una vez los modelos de visión y de recorte (Hugging Face), las librerías que los ejecutan, el lector de etiquetas y el de QR (jsDelivr) y el detector de postura (jsDelivr y Google);
 - leer las webs, enlaces, noticias y precios de tu lista de deseos. Para ello usa el lector público `r.jina.ai`, que solo recibe la dirección pública de la página;
+- buscar en tiendas una prenda de una foto de un look: solo se envía el **texto** de la búsqueda (marca, tipo, color o referencia) a DuckDuckGo o Bing a través del lector, nunca la foto. «Buscar por imagen» solo comparte la foto si tú eliges una app;
 - consultar el tiempo con tu ubicación aproximada (Open-Meteo), solo cuando pides el «look de hoy»;
 - al pasar el armario a otro móvil, los dos móviles se conectan directamente (WebRTC, cifrado). Un servidor público de Google (STUN) solo les ayuda a encontrarse; tus prendas no pasan por él.
 - si conectas **tu servidor Vestia**, tu armario, tus looks, tu diario y tu lista de deseos se guardan también en tu propia cuenta de Cloudflare, protegidos con una clave que solo conocen tus móviles. La mini Vestia pública solo existe si la activas y nunca enseña precios, notas ni tu diario.
 
-Tu foto del probador se guarda solo en tu iPhone y puedes borrarla desde el Probador.
+Tu foto del probador y tu cara recortada se guardan solo en tu iPhone (no se sincronizan con tu servidor) y puedes borrarlas desde el Probador.
 
 No hay cuentas obligatorias ni costes.
 

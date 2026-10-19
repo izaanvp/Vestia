@@ -1,8 +1,8 @@
 // Service worker: guarda la app para que funcione sin conexión.
-const CACHE = 'vestia-v14';
+const CACHE = 'vestia-v15';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'core.js', 'db.js', 'color.js', 'advisor.js',
   'closet.js', 'dress.js', 'fitting.js', 'skin.js', 'skinui.js', 'bodyui.js', 'demo.js', 'wear.js', 'realwear.js', 'cutout.js', 'scanner.js', 'swipe.js', 'intro.js', 'vistelo.js', 'shop.js', 'profile.js',
-  'vision.js', 'vision-text.json', 'web.js', 'share.js', 'diary.js', 'stats.js', 'prices.js', 'label.js', 'transfer.js', 'pose.js', 'photobody.js', 'sync.js', 'card.js', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+  'vision.js', 'vision-text.json', 'web.js', 'share.js', 'diary.js', 'stats.js', 'prices.js', 'label.js', 'transfer.js', 'pose.js', 'photobody.js', 'sync.js', 'card.js', 'parse.js', 'face.js', 'poseui.js', 'lookscan.js', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

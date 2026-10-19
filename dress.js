@@ -13,6 +13,8 @@ import { renderDiary, wearToday } from './diary.js';
 import { shareLook } from './share.js';
 import { markDirty } from './sync.js';
 import { customBody, openBodyPhoto, wearBody } from './photobody.js';
+import { openPoseEditor } from './poseui.js';
+import { openHeadTool } from './face.js';
 import {
   state, $, $$, esc, toast, openSheet, saveProfile, label, byId, ICON, SLOT, SLOT_LABEL, OCCASIONS, slotOf, go,
 } from './core.js';
@@ -199,6 +201,7 @@ function renderProbador() {
       <div class="stage-light"></div><div class="stage-dust"></div>
       <div class="mannequin-wrap" id="mannequin"><div class="loader-ring"></div></div>
       <button class="stage-chip skin-chip" id="skinChip"><i style="background:${skin}"></i>${p.skin ? esc(describe(skin).depth) : 'Tu tono de piel'}</button>
+      ${p.bodySource === 'photo' && state.bodyPhoto ? '' : `<button class="stage-chip face-chip" id="faceChip">${state.headPhoto && p.headOn ? `<img src="${state.headPhoto.src}" alt="">Tu cara` : `${ICON.person} Pon tu cara`}</button>`}
       <span class="stage-chip score-chip" id="scoreChip" hidden></span>
       <div class="mode-switch" role="group" aria-label="Cómo se ven las prendas" ${p.bodySource === 'photo' && state.bodyPhoto ? 'hidden' : ''}>
         <button data-mode="real" class="${!['digital', 'foto'].includes(p.wearMode) ? 'on' : ''}">Real</button>
@@ -212,8 +215,9 @@ function renderProbador() {
     </div>
 
     ${p.bodySource === 'photo' && state.bodyPhoto ? '' : `<div class="pose-row" role="group" aria-label="Pose del maniquí">
-      ${Object.entries(POSES).map(([k, v]) => `<button data-pose="${k}" class="${(p.pose || 'relajada') === k ? 'on' : ''}" aria-label="${v.label}">
+      ${[...Object.entries(POSES), ...(p.customPose ? [['propia', { label: 'Tu pose' }]] : [])].map(([k, v]) => `<button data-pose="${k}" class="${(p.pose || 'relajada') === k ? 'on' : ''}" aria-label="${v.label}">
         <span class="pose-fig">${F.mannequinSVG({ skin, body: { ...body, pose: k, face: false, hairStyle: 'Sin pelo' }, bare: true })}</span><small>${v.label}</small></button>`).join('')}
+      <button class="pose-new" id="poseNew" aria-label="Crear tu pose"><span>＋</span><small>${p.customPose ? 'Editar tu pose' : 'Crea tu pose'}</small></button>
     </div>`}
     <div class="slot-tabs" id="slotTabs"></div>
     <div class="rail" id="rail"></div>
@@ -239,6 +243,8 @@ function renderProbador() {
   updateProbador();
 
   $('#skinChip').addEventListener('click', () => openSkinSheet(() => renderDress()));
+  $('#faceChip')?.addEventListener('click', () => openHeadTool(null, () => renderDress()));
+  $('#poseNew')?.addEventListener('click', () => openPoseEditor(() => renderDress()));
   $$('[data-pose]', host).forEach((b) => b.addEventListener('click', () => {
     p.pose = b.dataset.pose; saveProfile();
     $$('[data-pose]', host).forEach((x) => x.classList.toggle('on', x === b));

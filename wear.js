@@ -71,16 +71,22 @@ function limb(chain, spec, out, P, kind) {
   return [a, { ...b, x: e.x, y: e.y }, { ...c, x: e.x + d2.x * L2, y: e.y + d2.y * L2 }];
 }
 // Medidas del maniquí con la pose aplicada (brazos y piernas de cada lado por separado)
-export function posedFig(figure, pose = 'relajada') {
+export function posedFig(figure, pose = 'relajada', custom = null) {
   const P = FIG[figure] || FIG.neutro;
-  const S = POSES[pose];
+  const S = pose === 'propia' && custom ? custom : POSES[pose];
   if (!S || pose === 'relajada') return P;
-  return {
-    ...P, pose,
-    arm: limb(P.arm, S.armL, -1, P, 'arm'), armR: limb(mirror(P.arm), S.armR, 1, P, 'arm'),
-    leg: limb(P.leg, S.legL, -1, P, 'leg'), legR: limb(mirror(P.leg), S.legR, 1, P, 'leg'),
-    bagAt: S.bagAt || null,
-  };
+  // Si una mano o un pie se sale del encuadre, la pose se suaviza un poco (los brazos del hombre son más largos)
+  const soften = (spec, k) => spec && (spec.hand ? spec : Object.fromEntries(Object.entries(spec).map(([key, v]) => [key, typeof v === 'number' ? v * k : v])));
+  for (let k = 1; ; k -= 0.08) {
+    const out = {
+      ...P, pose,
+      arm: limb(P.arm, soften(S.armL, k), -1, P, 'arm'), armR: limb(mirror(P.arm), soften(S.armR, k), 1, P, 'arm'),
+      leg: limb(P.leg, soften(S.legL, k), -1, P, 'leg'), legR: limb(mirror(P.leg), soften(S.legR, k), 1, P, 'leg'),
+      bagAt: S.bagAt || null,
+    };
+    const pts = [...out.arm, ...out.armR, ...out.leg, ...out.legR];
+    if (k < 0.3 || pts.every((q) => q.x - q.r * 2.2 > 2 && q.x + q.r * 2.2 < 298 && q.y - q.r * 2.2 > 2 && q.y < 600)) return out;
+  }
 }
 const f1 = (n) => Math.round(n * 10) / 10;
 

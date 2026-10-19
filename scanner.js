@@ -65,7 +65,9 @@ function showPicker(onAdd, source = null) {
       <button class="scan-cat ${c.id === last ? 'on' : ''}" data-cat="${c.id}">
         ${c.id === 'auto' ? ICON.spark : `<svg viewBox="0 0 100 120" aria-hidden="true"><path d="${c.path}"/></svg>`}<span>${c.label}</span>
       </button>`).join('')}</div>
-    <p class="small muted scan-why">Así Vistelo la reconoce mejor, la cámara te enseña cómo colocarla y el maniquí sabe ponérsela. Consejo: la prenda sola (sin nadie dentro), extendida sobre un fondo liso.</p>`;
+    <p class="small muted scan-why">Así Vistelo la reconoce mejor, la cámara te enseña cómo colocarla y el maniquí sabe ponérsela. Consejo: la prenda sola (sin nadie dentro), extendida sobre un fondo liso.</p>
+    <button class="look-cta" id="lookCta">${ICON.person}<span><b>¿La llevas puesta? Foto de un look</b><small>Una foto de cuerpo entero con cualquier fondo: saco cada prenda y busco su marca</small></span></button>`;
+  $('#lookCta', body).addEventListener('click', () => import('./lookscan.js').then((m) => m.openLookScan(source instanceof HTMLCanvasElement ? source : null)));
   $$('[data-cat]', body).forEach((b) => b.addEventListener('click', () => {
     const cat = catOf(b.dataset.cat);
     state.profile.scanCat = cat.id; saveProfile();
@@ -278,6 +280,17 @@ export async function analyzeGarment(original, { cat = catOf('auto'), method, se
   }
   onStep('cut', CU.mlReady() && wantML ? 'Recortando el fondo con IA' : 'Recortando el fondo');
   const res = await CU.cutout(original, { method: wantML ? 'ia' : method || 'auto', sensitivity, soft });
+  // Foto de tienda con modelo: se quita a la persona (cara, pelo, brazos, piernas) y queda solo la prenda
+  if (wantML && CU.mlReady() && cat.id !== 'acc') {
+    try {
+      const PA = await import('./parse.js');
+      if (PA.hasSkin(res.canvas)) {
+        onStep('cut', PA.parserReady() ? 'Quitando a la modelo de la foto' : 'Descargando el analizador de ropa (~29 MB, solo la primera vez)');
+        const iso = await PA.isolateGarment(res.canvas, cat.id);
+        if (iso) res.canvas = CU.dropSpecks(iso.canvas);
+      }
+    } catch { /* se queda el recorte normal */ }
+  }
   onStep('cutDone', res.canvas);
 
   // 2. Tipo de prenda (solo entre los tipos de la categoría elegida)
@@ -341,7 +354,7 @@ async function process(input, onAdd, opts = {}) {
   showResult({ ...r, onAdd });
 }
 
-function colorsOf(canvas) {
+export function colorsOf(canvas) {
   const colors = CU.garmentColors(canvas);
   const primary = colors[0] || { hex: C.dominantColor(canvas), share: 1 };
   return { colors, primary, colorName: C.nearestNamed(primary.hex).name };

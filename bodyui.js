@@ -40,6 +40,12 @@ export function openBodySheet(onDone = () => {}, worn = {}) {
         <p class="section-label">Color de pelo</p>
         <div class="hair-row">${Object.entries(F.HAIR).map(([n, c]) => `<button data-color="${n}" class="${draft.hairColor === n ? 'on' : ''}" title="${n}" style="background:${c}"></button>`).join('')}</div>
 
+        <p class="section-label">Tu cara y tu pose</p>
+        <div class="row">
+          <button class="btn ghost" id="optHead">${state.headPhoto ? `<img class="mini-head" src="${state.headPhoto.src}" alt=""> Tu cara` : `${ICON.person} Pon tu cara`}</button>
+          <button class="btn ghost" id="optPose">${ICON.person} ${p.customPose ? 'Tu pose' : 'Crea tu pose'}</button>
+        </div>
+        ${state.headPhoto ? `<label class="switch"><span>Usar mi cara</span><input type="checkbox" id="optHeadOn" ${draft.headOn ? 'checked' : ''}></label>` : ''}
         <label class="switch"><span>Rasgos de la cara</span><input type="checkbox" id="optFace" ${draft.face ? 'checked' : ''}></label>
         <label class="switch"><span>Barba</span><input type="checkbox" id="optBeard" ${draft.beard ? 'checked' : ''}></label>
       </div>
@@ -79,6 +85,17 @@ export function openBodySheet(onDone = () => {}, worn = {}) {
     redraw();
   }));
   $('#optFace').addEventListener('change', (e) => { draft.face = e.target.checked; redraw(); });
+  $('#optHeadOn')?.addEventListener('change', (e) => { draft.headOn = e.target.checked; redraw(); });
+  $('#optHead').addEventListener('click', async () => {
+    save(false);
+    const { openHeadTool } = await import('./face.js');
+    openHeadTool(null, () => openBodySheet(onDone, worn));
+  });
+  $('#optPose').addEventListener('click', async () => {
+    save(false);
+    const { openPoseEditor } = await import('./poseui.js');
+    openPoseEditor(() => openBodySheet(onDone, worn));
+  });
   $('#optBeard').addEventListener('change', (e) => { draft.beard = e.target.checked; redraw(); });
   $('#measureSkin').addEventListener('click', () => {
     save(false);
@@ -86,9 +103,10 @@ export function openBodySheet(onDone = () => {}, worn = {}) {
   });
 
   function save(close = true) {
-    const { chosen, hairColor, ...body } = draft;
+    const { chosen, hairColor, pose, customPose, headOn, ...body } = draft;
     p.body = body;
     p.hair = hairColor;
+    if (state.headPhoto) p.headOn = !!headOn;
     if (skin !== p.skin?.hex) p.skin = { hex: skin, source: 'selección manual', date: Date.now() };
     saveProfile();
     if (close) { closeSheet(); toast('Maniquí guardado'); onDone(); }

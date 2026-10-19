@@ -65,6 +65,20 @@ async function maskML(canvas) {
   return m.data;
 }
 
+// Quita motas sueltas (trocitos pequeños separados de la prenda)
+export function dropSpecks(canvas) {
+  const W = canvas.width, H = canvas.height, x = canvas.getContext('2d', { willReadFrequently: true });
+  const img = x.getImageData(0, 0, W, H), m = new Uint8Array(W * H);
+  for (let i = 0; i < m.length; i++) m[i] = img.data[i * 4 + 3];
+  const k = keepMainParts(m, W, H);
+  for (let i = 0; i < m.length; i++) img.data[i * 4 + 3] = k[i];
+  x.putImageData(img, 0, 0);
+  return canvas;
+}
+
+// Máscara de la figura principal (persona o prenda) por IA, de 0 a 255 y del tamaño de la imagen
+export const matte = (canvas) => maskML(canvas);
+
 // Máscara rápida: inunda desde los bordes todo lo que se parece al fondo.
 function maskQuick(canvas, sensitivity = 1) {
   const W = canvas.width, H = canvas.height;
@@ -229,12 +243,21 @@ export async function cutout(source, { method = 'auto', sensitivity = 1, soft = 
   base.getContext('2d').drawImage(source, 0, 0, base.width, base.height);
 
   if (hasTransparency(base)) {
-    onStep('ya-transparente');
     const ctx = base.getContext('2d', { willReadFrequently: true });
     const d = ctx.getImageData(0, 0, base.width, base.height).data;
     const m = new Uint8Array(base.width * base.height);
     for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3];
-    return { ...applyMask(base, m, { soft: 0.1 }), method: 'png' };
+    // Un PNG cuya parte visible es un rectángulo (una foto con su fondo dentro de un marco transparente)
+    // no está recortado de verdad: se aplana sobre blanco y se recorta como una foto normal
+    const box = rectOf(m, base.width, base.height);
+    if (!box?.rect) {
+      onStep('ya-transparente');
+      return { ...applyMask(base, m, { soft: 0.1 }), method: 'png' };
+    }
+    const flat = document.createElement('canvas'); flat.width = box.w; flat.height = box.h;
+    const fx = flat.getContext('2d'); fx.fillStyle = '#fff'; fx.fillRect(0, 0, box.w, box.h);
+    fx.drawImage(base, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+    return cutout(flat, { method, sensitivity, soft, onStep, depth });
   }
   let mask, used;
   if (method === 'ia' || (method === 'auto' && mlReady())) {

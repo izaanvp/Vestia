@@ -106,7 +106,8 @@ export function renderProfile() {
         <summary>Qué sale de tu iPhone</summary>
         <p class="small muted">Tus fotos y tu armario no salen del dispositivo, salvo que conectes tu propio servidor. Vestia solo se conecta para:</p>
         <ul class="small muted privacy-list">
-          <li>descargar una vez los modelos de visión y de recorte (Hugging Face), el lector de etiquetas y el de QR (jsDelivr) y el detector de postura para el probador con tu foto (jsDelivr y Google);</li>
+          <li>descargar una vez los modelos de visión, de recorte y el analizador de ropa (Hugging Face), el lector de etiquetas y el de QR (jsDelivr) y los detectores de postura y de cara (jsDelivr y Google);</li>
+          <li>buscar en tiendas una prenda de una foto de un look (solo el texto de la búsqueda, nunca la foto);</li>
           <li>leer las webs, enlaces, noticias y precios de tu lista de deseos (a través del lector público r.jina.ai, que solo recibe la dirección de la web);</li>
           <li>consultar el tiempo con tu ubicación aproximada (Open-Meteo) cuando pides el «look de hoy»;</li>
           <li>al pasar el armario a otro móvil, los dos se conectan directamente; un servidor público de Google (STUN) solo les ayuda a encontrarse;</li>
