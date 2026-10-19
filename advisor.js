@@ -188,7 +188,7 @@ export function productFromPage(page) {
   const findColor = (hay) => Object.entries(COLOR_WORDS).find(([, w]) => w.some((x) => hay.includes(` ${x}`)))?.[0];
   const color = findColor(` ${titleN} `) || findColor(hintN) || findColor(` ${text} `) || null;
   const brand = Object.keys(KNOWN_BRANDS).find((b) => text.includes(norm(b)) || page.site.includes(norm(b).replace(/[^a-z]/g, ''))) || '';
-  return { type, color, hex: color ? C.NAMED_COLORS.find((c) => c.name === color)?.hex : null, brand, title: page.title.replace(/\s*[|–-]\s*[^|–-]+$/, '').slice(0, 90), price: page.price, image: page.image, url: page.url, site: page.site };
+  return { type, color, hex: color ? C.NAMED_COLORS.find((c) => c.name === color)?.hex : null, brand, title: page.title.replace(/\s*[|–-]\s*[^|–-]+$/, '').slice(0, 90), price: page.price, wasPrice: page.wasPrice, image: page.image, url: page.url, site: page.site };
 }
 
 // ---------------- Chat de Vistelo AI ----------------

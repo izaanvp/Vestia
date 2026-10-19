@@ -1,4 +1,4 @@
-// Almacenamiento local: IndexedDB para prendas y outfits, localStorage para el perfil.
+// Almacenamiento local: IndexedDB para prendas, outfits, diario y tu foto; localStorage para el perfil.
 
 const DB_NAME = 'vestia';
 let dbp;
@@ -6,13 +6,13 @@ let dbp;
 function open() {
   if (!dbp) {
     dbp = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+      // v2: diario de looks (una entrada por día, clave AAAA-MM-DD). v3: fotos propias (probador con tu foto)
+      const req = indexedDB.open(DB_NAME, 3);
       req.onupgradeneeded = () => {
         const db = req.result;
-        db.createObjectStore('items', { keyPath: 'id' });
-        db.createObjectStore('outfits', { keyPath: 'id' });
+        for (const name of ['items', 'outfits', 'diary', 'media']) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => { const db = req.result; db.onversionchange = () => db.close(); resolve(db); };
       req.onerror = () => reject(req.error);
     });
   }

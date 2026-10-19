@@ -95,7 +95,11 @@ export async function readPage(url, { force = false } = {}) {
   const images = [...body.matchAll(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g)]
     .map((x) => ({ alt: x[1], src: x[2] }))
     .filter((x) => !/logo|icon|sprite|svg|pixel|tracking|1x1/i.test(x.src));
-  const priceM = body.match(/(\d{1,4}(?:[.,]\d{2})?)\s?(?:€|EUR)|€\s?(\d{1,4}(?:[.,]\d{2})?)/);
+  // Precio actual: el primero que no esté tachado (en rebajas el precio antiguo suele ir ~~tachado~~)
+  const PRICE = /(~~)?\s*(?:(\d{1,4}(?:[.,]\d{2})?)\s?(?:€|EUR)|€\s?(\d{1,4}(?:[.,]\d{2})?))\s*(~~)?/g;
+  const prices = [...body.slice(0, 4000).matchAll(PRICE)].map((x) => ({ v: x[2] || x[3], struck: !!(x[1] || x[4]) }));
+  const priceM = prices.find((x) => !x.struck) || prices[0];
+  const wasM = prices.find((x) => x.struck);
   const text = body.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[#*_>|]/g, ' ').replace(/\s+/g, ' ').trim();
   // Enlaces a productos o colecciones dentro de la página (para webs de marca)
   const links = [...body.matchAll(/\[([^\]!]{4,80})\]\((https?:[^)\s]+)\)/g)]
@@ -111,7 +115,8 @@ export async function readPage(url, { force = false } = {}) {
   const page = {
     url, title, site: host(url), colorHint,
     image: images[0]?.src || null,
-    price: priceM ? `${(priceM[1] || priceM[2]).replace('.', ',')} €` : null,
+    price: priceM ? `${priceM.v.replace('.', ',')} €` : null,
+    wasPrice: wasM && wasM !== priceM ? `${wasM.v.replace('.', ',')} €` : null,
     text: text.slice(0, 1500),
     links,
   };

@@ -33,6 +33,55 @@ export const FIG = {
   },
 };
 export const mirror = (chain) => chain.map((p) => ({ ...p, x: 300 - p.x }));
+
+// ---------- Poses del maniquí ----------
+// Ángulos en grados desde la vertical (0 = colgando; positivo = hacia fuera del cuerpo).
+// hand: 'hip' lleva la mano a la cintura (cinemática inversa, con el codo hacia fuera).
+export const POSES = {
+  relajada: { label: 'Relajada' },
+  cintura: { label: 'Manos en la cintura', armL: { hand: 'hip' }, armR: { hand: 'hip' }, legL: { thigh: 3, shin: 3 }, legR: { thigh: 3, shin: 3 }, bagAt: 'elbow' },
+  pasarela: { label: 'Pasarela', armL: { up: 9, fore: 5 }, armR: { hand: 'hip' }, legL: { thigh: -2.5, shin: 2 }, legR: { thigh: 5, shin: 4 }, bagAt: 'elbow' },
+  paseo: { label: 'Paseo', armL: { up: -7, fore: -12 }, armR: { up: 12, fore: 26 }, legL: { thigh: 7, shin: -4 }, legR: { thigh: -3, shin: 8 } },
+  saludo: { label: 'Saludando', armL: { up: 34, fore: 166 }, armR: { up: 6, fore: 4 }, legL: { thigh: 2, shin: 2 }, legR: { thigh: 2, shin: 2 } },
+  abiertos: { label: 'Brazos abiertos', armL: { up: 27, fore: 33 }, armR: { up: 27, fore: 33 }, legL: { thigh: 5, shin: 5 }, legR: { thigh: 5, shin: 5 } },
+};
+const segLen = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+// Dirección con un ángulo desde la vertical, hacia fuera según el lado (-1 izquierda de la pantalla, +1 derecha)
+const dirAt = (deg, out) => { const r = (deg * Math.PI) / 180; return { x: out * Math.sin(r), y: Math.cos(r) }; };
+function limb(chain, spec, out, P, kind) {
+  if (!spec) return chain;
+  const [a, b, c] = chain;
+  const L1 = segLen(a, b), L2 = segLen(b, c);
+  if (spec.hand === 'hip') {
+    // Mano en la cintura: dos huesos hacia un punto del costado
+    const ty = P.waistY + 12, tx = 150 + out * (hwAt(P.rows, ty) + c.r * 0.6);
+    let dx = tx - a.x, dy = ty - a.y;
+    const d = Math.min(L1 + L2 - 1, Math.hypot(dx, dy));
+    const base = Math.atan2(dy, dx), cosA = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d);
+    const alpha = Math.acos(Math.max(-1, Math.min(1, cosA)));
+    // El codo sale hacia fuera
+    const e1 = base + alpha, e2 = base - alpha;
+    const pick = Math.cos(e1) * out > Math.cos(e2) * out ? e1 : e2;
+    const e = { x: a.x + Math.cos(pick) * L1, y: a.y + Math.sin(pick) * L1 };
+    const ang = Math.atan2(ty - e.y, tx - e.x);
+    return [a, { ...b, x: e.x, y: e.y }, { ...c, x: e.x + Math.cos(ang) * L2, y: e.y + Math.sin(ang) * L2 }];
+  }
+  const d1 = dirAt(spec.up ?? spec.thigh ?? 0, out), d2 = dirAt(spec.fore ?? spec.shin ?? 0, out);
+  const e = { x: a.x + d1.x * L1, y: a.y + d1.y * L1 };
+  return [a, { ...b, x: e.x, y: e.y }, { ...c, x: e.x + d2.x * L2, y: e.y + d2.y * L2 }];
+}
+// Medidas del maniquí con la pose aplicada (brazos y piernas de cada lado por separado)
+export function posedFig(figure, pose = 'relajada') {
+  const P = FIG[figure] || FIG.neutro;
+  const S = POSES[pose];
+  if (!S || pose === 'relajada') return P;
+  return {
+    ...P, pose,
+    arm: limb(P.arm, S.armL, -1, P, 'arm'), armR: limb(mirror(P.arm), S.armR, 1, P, 'arm'),
+    leg: limb(P.leg, S.legL, -1, P, 'leg'), legR: limb(mirror(P.leg), S.legR, 1, P, 'leg'),
+    bagAt: S.bagAt || null,
+  };
+}
 const f1 = (n) => Math.round(n * 10) / 10;
 
 // ---------- Colores ----------
@@ -243,7 +292,7 @@ function buttons(x, ys, r = 2.4) {
 
 function topGarment(ctx, kind) {
   const { P } = ctx;
-  const armL = P.arm, armR = mirror(P.arm);
+  const armL = P.arm, armR = P.armR || mirror(P.arm);
   const hw = (y) => hwAt(P.rows, y);
   const waist = P.waistY, hip = P.hipY;
   const ny = P.neck.y1 - 4, nw = P.neck.hw + 2;
@@ -331,7 +380,7 @@ function topGarment(ctx, kind) {
 
 function outerGarment(ctx, kind) {
   const { P } = ctx;
-  const armL = P.arm, armR = mirror(P.arm);
+  const armL = P.arm, armR = P.armR || mirror(P.arm);
   const hw = (y) => hwAt(P.rows, Math.min(y, P.crotchY));
   const ny = P.neck.y1 - 4, nw = P.neck.hw + 2;
   const knee = P.leg[1].y;
@@ -396,7 +445,7 @@ function outerGarment(ctx, kind) {
 
 function bottomGarment(ctx, kind) {
   const { P } = ctx;
-  const legL = P.leg, legR = mirror(P.leg);
+  const legL = P.leg, legR = P.legR || mirror(P.leg);
   const hw = (y) => hwAt(P.rows, Math.min(y, P.crotchY));
   const top = P.waistY + (kind === 'leggings' ? 6 : 14);
   const pieces = [];
@@ -450,13 +499,13 @@ function bottomGarment(ctx, kind) {
 
 function onePiece(ctx, kind) {
   const { P } = ctx;
-  const armL = P.arm, armR = mirror(P.arm);
+  const armL = P.arm, armR = P.armR || mirror(P.arm);
   const hw = (y) => hwAt(P.rows, Math.min(y, P.crotchY));
   const waist = P.waistY, ny = P.neck.y1 - 4, nw = P.neck.hw + 2;
   const pieces = [];
   let det = '';
   if (kind === 'jumpsuit' || kind === 'overalls') {
-    for (const leg of [P.leg, mirror(P.leg)]) pieces.push({ d: limbPath(leg, { ease: 6, to: 1.02, flare: 4, capEnd: 'flat' }) });
+    for (const leg of [P.leg, P.legR || mirror(P.leg)]) pieces.push({ d: limbPath(leg, { ease: 6, to: 1.02, flare: 4, capEnd: 'flat' }) });
     if (kind === 'jumpsuit') {
       pieces.push({ d: torsoPath(P, { ease: 5, hemY: P.crotchY + 4, neckDepth: 18 }) });
       det += `<path d="M${150 - hw(waist) - 6} ${waist} Q150 ${waist + 4} ${150 + hw(waist) + 6} ${waist}" stroke="{D}" stroke-width="2" opacity=".5"/>`;
@@ -491,7 +540,7 @@ function shoes(ctx, kind) {
   const Lc = shadeHex(base, 0.3);
   const { fill, defs } = fabricDefs(ctx);
   let g = '';
-  for (const leg of [P.leg, mirror(P.leg)]) {
+  for (const leg of [P.leg, P.legR || mirror(P.leg)]) {
     const a = leg[2], k = leg[1];
     const fx = a.x, fy = a.y + 12;
     if (kind === 'sneakers') {

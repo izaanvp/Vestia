@@ -3,10 +3,16 @@ import * as db from './db.js';
 import * as C from './color.js';
 import * as A from './advisor.js';
 import * as F from './fitting.js';
+import { renderReal } from './realwear.js';
+import { POSES } from './wear.js';
 import { describe } from './skin.js';
 import { openSkinSheet } from './skinui.js';
 import { openBodySheet } from './bodyui.js';
 import { showItem, bestMatches } from './closet.js';
+import { renderDiary, wearToday } from './diary.js';
+import { shareLook } from './share.js';
+import { markDirty } from './sync.js';
+import { customBody, openBodyPhoto, wearBody } from './photobody.js';
 import {
   state, $, $$, esc, toast, openSheet, saveProfile, label, byId, ICON, SLOT, SLOT_LABEL, OCCASIONS, slotOf, go,
 } from './core.js';
@@ -84,12 +90,12 @@ export function renderDress() {
   const v = $('#view');
   v.innerHTML = `
     <div class="seg seg-lg" style="margin-bottom:14px">
-      ${[['probador', 'Probador'], ['ideas', 'Ideas'], ['guardados', `Guardados${state.outfits.length ? ` · ${state.outfits.length}` : ''}`]].map(([k, l]) =>
+      ${[['probador', 'Probador'], ['ideas', 'Ideas'], ['guardados', `Looks${state.outfits.length ? ` · ${state.outfits.length}` : ''}`], ['diario', 'Diario']].map(([k, l]) =>
         `<button data-dv="${k}" class="${state.dressView === k ? 'on' : ''}">${l}</button>`).join('')}
     </div>
     <div id="dressBody"></div>`;
   $$('[data-dv]', v).forEach((b) => b.addEventListener('click', () => { state.dressView = b.dataset.dv; renderDress(); }));
-  ({ probador: renderProbador, ideas: renderIdeas, guardados: renderSaved })[state.dressView]();
+  ({ probador: renderProbador, ideas: renderIdeas, guardados: renderSaved, diario: () => renderDiary($('#dressBody'), { onTry: tryOn }) })[state.dressView]();
 }
 
 function wornPieces() {
@@ -140,10 +146,18 @@ async function updateProbador(changedSlot = null) {
   p.lastWorn = { ...state.worn }; saveProfile();
   const token = ++drawToken;
   const worn = {};
-  await Promise.all(pieces.map(async (w) => { worn[w.slot] = { item: w.item, src: await F.trim(w.item), fabric: await F.fabric(w.item, w.slot) }; }));
+  const custom = wearBody();
+  // Con tu foto solo se usa el modo real (las prendas adaptadas a tu cuerpo)
+  const mode = custom?.photo ? 'real' : p.wearMode === 'digital' || p.wearMode === 'foto' ? p.wearMode : 'real';
+  await Promise.all(pieces.map(async (w) => {
+    const src = await F.trim(w.item);
+    worn[w.slot] = { item: w.item, src, fabric: await F.fabric(w.item, w.slot) };
+    if (mode === 'real') worn[w.slot].real = await renderReal(w.item, w.slot, body.figure, src, custom);
+  }));
   const m = $('#mannequin');
   if (!m || token !== drawToken) return; // se cambió de pestaña o hubo otro cambio mientras cargaba
-  m.innerHTML = F.mannequinSVG({ skin, body, worn, mode: p.wearMode || 'digital' });
+  m.innerHTML = F.mannequinSVG({ skin, body, worn, mode, photo: custom?.photo });
+  m.classList.toggle('is-photo', !!custom?.photo);
   if (changedSlot) m.querySelector(`.cloth[data-slot="${changedSlot}"]`)?.classList.add('fresh');
   $$('.cloth', m).forEach((el) => el.addEventListener('click', () => showItem(byId(state.worn[el.dataset.slot]))));
   m.dataset.worn = JSON.stringify(Object.keys(worn));
@@ -175,14 +189,20 @@ function renderProbador() {
   const body = F.bodyOf(p);
 
   host.innerHTML = `
+    <div class="body-switch" role="group" aria-label="Quién se prueba la ropa">
+      <span>Te lo pruebas en</span>
+      <button data-bsrc="mannequin" class="${p.bodySource !== 'photo' ? 'on' : ''}">${ICON.hanger} Maniquí</button>
+      <button data-bsrc="photo" class="${p.bodySource === 'photo' ? 'on' : ''}">${ICON.person} Mi foto</button>
+    </div>
     <div class="fitting-stage">
       <div class="stage-curtain left"></div><div class="stage-curtain right"></div>
       <div class="stage-light"></div><div class="stage-dust"></div>
       <div class="mannequin-wrap" id="mannequin"><div class="loader-ring"></div></div>
       <button class="stage-chip skin-chip" id="skinChip"><i style="background:${skin}"></i>${p.skin ? esc(describe(skin).depth) : 'Tu tono de piel'}</button>
       <span class="stage-chip score-chip" id="scoreChip" hidden></span>
-      <div class="mode-switch" role="group" aria-label="Cómo se ven las prendas">
-        <button data-mode="digital" class="${(p.wearMode || 'digital') === 'digital' ? 'on' : ''}">A medida</button>
+      <div class="mode-switch" role="group" aria-label="Cómo se ven las prendas" ${p.bodySource === 'photo' && state.bodyPhoto ? 'hidden' : ''}>
+        <button data-mode="real" class="${!['digital', 'foto'].includes(p.wearMode) ? 'on' : ''}">Real</button>
+        <button data-mode="digital" class="${p.wearMode === 'digital' ? 'on' : ''}">Ilustrada</button>
         <button data-mode="foto" class="${p.wearMode === 'foto' ? 'on' : ''}">Foto</button>
       </div>
       ${!state.items.length && body.chosen ? '<p class="stage-empty">Sube prendas en Armario o carga el armario de ejemplo en Perfil</p>' : ''}
@@ -191,6 +211,10 @@ function renderProbador() {
         <button class="chip" id="moreBody">Más opciones</button></div>` : ''}
     </div>
 
+    ${p.bodySource === 'photo' && state.bodyPhoto ? '' : `<div class="pose-row" role="group" aria-label="Pose del maniquí">
+      ${Object.entries(POSES).map(([k, v]) => `<button data-pose="${k}" class="${(p.pose || 'relajada') === k ? 'on' : ''}" aria-label="${v.label}">
+        <span class="pose-fig">${F.mannequinSVG({ skin, body: { ...body, pose: k, face: false, hairStyle: 'Sin pelo' }, bare: true })}</span><small>${v.label}</small></button>`).join('')}
+    </div>`}
     <div class="slot-tabs" id="slotTabs"></div>
     <div class="rail" id="rail"></div>
 
@@ -199,6 +223,8 @@ function renderProbador() {
       <button class="action" id="random">${ICON.shuffle}<span>Sorpréndeme</span></button>
       <button class="action" id="analyze">${ICON.spark}<span>Analizar look</span></button>
       <button class="action" id="saveLook">${ICON.heart}<span>Guardar look</span></button>
+      <button class="action" id="wearToday">${ICON.calendar}<span>Me lo pongo hoy</span></button>
+      <button class="action" id="shareLook">${ICON.share}<span>Compartir</span></button>
     </div>
     <div class="card body-card">
       <div class="body-summary">
@@ -213,6 +239,19 @@ function renderProbador() {
   updateProbador();
 
   $('#skinChip').addEventListener('click', () => openSkinSheet(() => renderDress()));
+  $$('[data-pose]', host).forEach((b) => b.addEventListener('click', () => {
+    p.pose = b.dataset.pose; saveProfile();
+    $$('[data-pose]', host).forEach((x) => x.classList.toggle('on', x === b));
+    const m = $('#mannequin'); m.classList.remove('posing'); void m.offsetWidth; m.classList.add('posing');
+    updateProbador();
+  }));
+  $$('[data-bsrc]', host).forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.bsrc === 'photo') {
+      if (!state.bodyPhoto) return openBodyPhoto(() => renderDress());
+      if (p.bodySource === 'photo') return openBodyPhoto(() => renderDress()); // segunda pulsación: cambiar o borrar la foto
+    }
+    p.bodySource = b.dataset.bsrc; saveProfile(); renderDress();
+  }));
   $$('[data-mode]', host).forEach((b) => b.addEventListener('click', () => {
     p.wearMode = b.dataset.mode; saveProfile();
     $$('[data-mode]', host).forEach((x) => x.classList.toggle('on', x === b));
@@ -249,11 +288,20 @@ function renderProbador() {
     if (items.length < 2) return toast('Ponle al menos dos prendas');
     openSheet(`<h3>Análisis de Vistelo</h3>${lookAnalysis(items)}`);
   });
+  $('#wearToday').addEventListener('click', async (e) => {
+    const items = currentItems();
+    if (!items.length) return toast('Ponle alguna prenda al maniquí');
+    await wearToday(items.map((x) => x.id)); sparkle(e.currentTarget);
+  });
+  $('#shareLook').addEventListener('click', () => {
+    const items = currentItems();
+    shareLook(items, { title: 'Mi look', subtitle: new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }), score: items.length > 1 ? scoreOutfit(items) : null });
+  });
   $('#saveLook').addEventListener('click', async (e) => {
     const items = currentItems();
     if (items.length < 2) return toast('Ponle al menos dos prendas');
     const rec = { id: db.uid(), ids: items.map((x) => x.id), score: scoreOutfit(items), occasion: state.occasion, createdAt: Date.now() };
-    await db.put('outfits', rec); state.outfits.push(rec);
+    await db.put('outfits', rec); state.outfits.push(rec); markDirty('looks');
     sparkle(e.currentTarget);
     toast('Look guardado');
   });
@@ -303,6 +351,7 @@ function outfitHTML(o, i, saved = false) {
       <span class="score">Armonía ${pct}%</span>
       <span class="small muted" style="flex:1">${esc(o.occasion || '')}</span>
       <button class="chip" data-why="${i}">¿Por qué?</button>
+      <button class="chip" data-share="${i}" aria-label="Compartir">${ICON.share}</button>
       <button class="chip on" data-try="${i}">${ICON.hanger} Probar</button>
       <button class="heart" data-${saved ? 'unsave' : 'save'}="${i}" aria-label="${saved ? 'Quitar' : 'Guardar'}">${saved ? '♥' : '♡'}</button>
     </div>
@@ -315,15 +364,16 @@ function bindOutfitList(root, list, saved) {
     openSheet(`<h3>Por qué funciona</h3>${lookAnalysis(o.pieces)}`);
   }));
   $$('[data-try]', root).forEach((b) => b.addEventListener('click', () => tryOn(list[+b.dataset.try].pieces.map((x) => x.id))));
+  $$('[data-share]', root).forEach((b) => b.addEventListener('click', () => { const o = list[+b.dataset.share]; shareLook(o.pieces, { title: 'Mi look', subtitle: o.occasion || '', score: o.score }); }));
   $$('[data-save]', root).forEach((b) => b.addEventListener('click', async () => {
     const o = list[+b.dataset.save];
     const rec = { id: db.uid(), ids: o.pieces.map((p) => p.id), score: o.score, occasion: o.occasion, createdAt: Date.now() };
-    await db.put('outfits', rec); state.outfits.push(rec);
+    await db.put('outfits', rec); state.outfits.push(rec); markDirty('looks');
     b.textContent = '♥'; toast('Look guardado');
   }));
   $$('[data-unsave]', root).forEach((b) => b.addEventListener('click', async () => {
     const o = list[+b.dataset.unsave];
-    await db.remove('outfits', o.id); state.outfits = state.outfits.filter((x) => x.id !== o.id);
+    await db.remove('outfits', o.id); state.outfits = state.outfits.filter((x) => x.id !== o.id); markDirty('looks');
     renderDress();
   }));
 }

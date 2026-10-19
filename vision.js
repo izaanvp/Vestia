@@ -172,7 +172,8 @@ export async function embedTexts(labels, progress_callback) {
 }
 
 // Analiza una prenda. canvas: imagen ya cargada (puede tener transparencia).
-export async function analyze(canvas) {
+// types (opcional): limita el reconocimiento a esos tipos (cuando eliges qué vas a escanear).
+export async function analyze(canvas, { types = null } = {}) {
   if (!isReady()) await load();
   // Fondo blanco y formato cuadrado para que el modelo vea la prenda entera.
   const S = 256, c = document.createElement('canvas');
@@ -194,9 +195,11 @@ export async function analyze(canvas) {
     return order.slice(0, 3).map(([p, i]) => ({ p, item: list[i] }));
   };
   // El tipo se decide sumando las probabilidades de todas sus variantes (más robusto).
-  const gp = softmax(sims.slice(0, nG));
+  const allowed = GARMENTS.map((g) => !types?.length || types.includes(g[1]));
+  const gs = sims.slice(0, nG).map((v, i) => (allowed[i] ? v : -1e9));
+  const gp = softmax(gs);
   const byType = {};
-  gp.forEach((p, i) => (byType[GARMENTS[i][1]] = (byType[GARMENTS[i][1]] || 0) + p));
+  gp.forEach((p, i) => { if (allowed[i]) byType[GARMENTS[i][1]] = (byType[GARMENTS[i][1]] || 0) + p; });
   const typeRank = Object.entries(byType).sort((a, b) => b[1] - a[1]);
   const type = typeRank[0][0];
   const subIdx = gp.map((p, i) => [p, i]).filter(([, i]) => GARMENTS[i][1] === type).sort((a, b) => b[0] - a[0])[0][1];
@@ -214,5 +217,7 @@ export async function analyze(canvas) {
     style: s[0].item[1],
     material: m[0].p > 0.3 ? m[0].item[1] : '',
     ranking: typeRank.slice(0, 4).map(([t, pr]) => ({ type: t, p: pr })),
+    // Variantes concretas dentro del tipo elegido (p. ej. «Gabardina», «Plumífero»…)
+    subtypes: gp.map((p, i) => [p, i]).filter(([, i]) => GARMENTS[i][1] === type).sort((a, b) => b[0] - a[0]).slice(0, 3).map(([p, i]) => ({ subtype: GARMENTS[i][2], p })),
   };
 }

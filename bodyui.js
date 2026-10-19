@@ -9,7 +9,9 @@ export function openBodySheet(onDone = () => {}, worn = {}) {
   const draft = { ...F.bodyOf(p) };
   let skin = p.skin?.hex || '#d4a37f';
 
-  const preview = () => F.mannequinSVG({ skin, body: draft, worn });
+  // La prenda real está calculada para la figura actual; si cambias de figura se muestra la versión ilustrada
+  const startFigure = draft.figure;
+  const preview = () => F.mannequinSVG({ skin, body: draft, worn, mode: draft.figure === startFigure ? 'real' : 'digital' });
   const typical = { mujer: 'Largo', hombre: 'Corto', neutro: 'Sin pelo' };
   const mini = (figure) => F.mannequinSVG({ skin, body: { ...draft, figure, hairStyle: figure === draft.figure ? draft.hairStyle : typical[figure], face: false, beard: figure === draft.figure && draft.beard }, bare: true });
 

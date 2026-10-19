@@ -12,6 +12,10 @@ import { isDemo, leaveDemo } from './demo.js';
 import { initSwipe, renderPager } from './swipe.js';
 import { buildStage, playIntro, openCurtain, skipCurtain } from './intro.js';
 import * as CU from './cutout.js';
+import { loadDiary } from './diary.js';
+import { loadBodyPhoto } from './photobody.js';
+import { checkPrices, updateBadge } from './prices.js';
+import * as SY from './sync.js';
 
 const TITLES = { closet: 'Armario', dress: 'Vestidor', vistelo: 'Vistelo AI', shop: 'Drops', profile: 'Perfil' };
 const RENDER = { closet: renderCloset, dress: renderDress, vistelo: renderVistelo, shop: renderShop, profile: renderProfile };
@@ -115,6 +119,8 @@ function showApp() {
   try {
     state.items = await db.getAll('items');
     state.outfits = await db.getAll('outfits');
+    await loadDiary();
+    await loadBodyPhoto();
     const ids = new Set(state.items.map((i) => i.id));
     state.worn = Object.fromEntries(Object.entries(state.profile.lastWorn || {}).filter(([, id]) => ids.has(id)));
   } catch { toast('No se pudo abrir el almacenamiento local'); }
@@ -124,4 +130,23 @@ function showApp() {
   // Precarga silenciosa del modelo de visión si está activado (ya está en caché tras la primera vez).
   if (state.profile.vision) setTimeout(() => V.load().catch(() => {}), 1500);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Tu servidor: sincroniza al abrir y atiende el QR privado de «Vincular otro móvil»
+  if (SY.isLinked()) W.setCustomReader(state.profile.server.url);
+  const vincular = new URLSearchParams(location.search).get('vincular');
+  if (vincular) {
+    history.replaceState(null, '', location.pathname);
+    try {
+      const data = SY.readLinkCode(vincular);
+      setTimeout(() => {
+        if (!confirm(SY.linkQuestion(data))) return;
+        toast('Vinculando con tu armario…');
+        SY.link(data).then((r) => { toast(`¡Vinculado! ${r?.down || 0} prendas recibidas`); views.go(state.tab, { keepScroll: true }); }).catch((e) => toast(e.message));
+      }, 1200);
+    } catch { toast('El código de vinculación no es válido'); }
+  } else if (SY.isLinked()) {
+    setTimeout(() => SY.sync().then((r) => { if (r && (r.down || r.removed)) views.go(state.tab, { keepScroll: true }); }).catch(() => {}), 3000);
+  }
+  // Precios de la lista de deseos: como mucho cada 12 horas, en segundo plano
+  updateBadge();
+  setTimeout(() => checkPrices().then(() => { updateBadge(); if (state.tab === 'shop') views.go('shop', { keepScroll: true }); }).catch(() => {}), 6000);
 })();

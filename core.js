@@ -44,6 +44,8 @@ export const state = {
   profile: db.loadProfile(),
   items: [],
   outfits: [],
+  diary: [],
+  bodyPhoto: null,
   tab: 'closet',
   groupBy: 'type',
   query: '',
@@ -86,6 +88,16 @@ export const ICON = {
   send: '<svg viewBox="0 0 24 24" class="ic"><path d="M4 12l16-8-6 16-2.5-6.5z"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" class="ic"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
   x: '<svg viewBox="0 0 24 24" class="ic"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  layers: '<svg viewBox="0 0 24 24" class="ic"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 17 9 5 9-5" opacity=".55"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" class="ic"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="8.5" cy="14.5" r="1" fill="currentColor"/><circle cx="12" cy="14.5" r="1" fill="currentColor"/></svg>',
+  share: '<svg viewBox="0 0 24 24" class="ic"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M5 12v6.5A2 2 0 0 0 7 20.5h10a2 2 0 0 0 2-2V12"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" class="ic"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
+  qr: '<svg viewBox="0 0 24 24" class="ic"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.2"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.2"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.2"/><path d="M14 14h3v3M20.5 14v.01M14 20.5h.01M17 20.5h3.5v-3"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" class="ic"><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.2 6.2a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8" cy="8" r="1.6"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" class="ic"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>',
+  person: '<svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="5" r="2.4"/><path d="M8 21v-6.5L6.5 9.5 12 8l5.5 1.5L16 14.5V21M12 14.5V21"/></svg>',
+  down: '<svg viewBox="0 0 24 24" class="ic"><path d="M4 7l6 6 3.5-3.5L20 16"/><path d="M14 16h6v-6"/></svg>',
+  check: '<svg viewBox="0 0 24 24" class="ic"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
 };
 
 let toastTimer, toastOut;
@@ -164,6 +176,14 @@ export async function prepareImage(file, max = 900) {
   if (!keepAlpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
   ctx.drawImage(img, 0, 0, c.width, c.height);
   return { canvas: c, dataUrl: c.toDataURL(keepAlpha ? 'image/png' : 'image/jpeg', 0.86) };
+}
+export function pickFiles(accept = 'image/*') {
+  return new Promise((resolve) => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = accept; inp.multiple = true;
+    inp.onchange = () => resolve([...inp.files]);
+    inp.click();
+  });
 }
 export function pickFile(accept = 'image/*', capture = false) {
   return new Promise((resolve) => {

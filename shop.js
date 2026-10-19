@@ -3,6 +3,7 @@ import * as C from './color.js';
 import * as A from './advisor.js';
 import * as W from './web.js';
 import { bestMatches } from './closet.js';
+import { checkPrices, dropsOf, updateBadge, enableNotifications, num, euro } from './prices.js';
 import { state, $, $$, esc, toast, saveProfile, shopLink, label, ICON, STYLE_KEYS, slotOf } from './core.js';
 
 export function wardrobeGaps() {
@@ -34,6 +35,14 @@ export function addWish(prod) {
   if (!p.wishlist.some((w) => w.url === prod.url)) p.wishlist.unshift({ ...prod, savedAt: Date.now() });
   saveProfile();
   toast('Guardado en tu lista de deseos');
+}
+
+// Mini gráfica del historial de precios
+function sparkline(vals) {
+  const v = vals.filter(Boolean); if (v.length < 2) return '';
+  const mn = Math.min(...v), mx = Math.max(...v), w = 60, h = 16;
+  const pts = v.map((x, i) => `${((i / (v.length - 1)) * w).toFixed(1)},${(h - 2 - ((x - mn) / (mx - mn || 1)) * (h - 4)).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 
 const allBrands = () => [...new Set([...state.profile.brands, ...state.items.map((i) => i.brand).filter(Boolean)])];
@@ -144,12 +153,23 @@ export function renderShop() {
       <div id="linkResult">${linkResultHTML(state.linkResult)}</div>
     </div>
 
-    ${wish.length ? `<div class="card">
-      <h3>Tu lista de deseos</h3>
-      ${wish.map((w, i) => `<div class="wish">
+    ${wish.length ? `<div class="card wish-card">
+      <div class="card-head"><h3>Tu lista de deseos</h3>
+        <button class="icon-btn ${p.priceNotify ? 'on' : ''}" id="priceBell" aria-label="Avisos de bajada de precio">${ICON.bell}</button></div>
+      <div class="price-bar">
+        <span class="small muted">${p.pricesCheckedAt ? `Precios revisados ${ago(p.pricesCheckedAt)}` : 'Vestia revisa los precios cada vez que abres la app'}</span>
+        <button class="chip" id="checkPrices">${ICON.down} Comprobar precios</button>
+      </div>
+      ${wish.map((w, i) => {
+        const now = w.lastPrice, base = num(w.price), d = w.drop;
+        const pct = d ? Math.round((1 - d.to / d.from) * 100) : 0;
+        return `<div class="wish ${d ? 'dropped' : ''}">
         ${w.image ? `<img src="${esc(w.image)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="wish-ph" style="background:${w.hex || 'var(--card)'}"></span>`}
-        <a href="${esc(w.url)}" target="_blank" rel="noopener"><small>${esc(w.site)}</small><b>${esc(w.title)}</b>${w.price ? `<em>${esc(w.price)}</em>` : ''}</a>
-        <button class="icon-btn" data-unwish="${i}" aria-label="Quitar">${ICON.x}</button></div>`).join('')}
+        <a href="${esc(w.url)}" target="_blank" rel="noopener"><small>${esc(w.site)}</small><b>${esc(w.title)}</b>
+          ${d ? `<em class="price-drop"><s>${euro(d.from)}</s> ${euro(d.to)} <span>−${pct}%</span></em>` : now && base && now !== base ? `<em>${euro(now)} <small class="muted">(guardado a ${euro(base)})</small></em>` : w.price ? `<em>${esc(w.price)}</em>` : ''}
+          ${w.history?.length > 1 ? `<span class="spark-line">${sparkline(w.history.map((h) => h.price))}</span>` : ''}</a>
+        <button class="icon-btn" data-unwish="${i}" aria-label="Quitar">${ICON.x}</button></div>`;
+      }).join('')}
     </div>` : ''}
 
     <div class="card">
@@ -194,7 +214,20 @@ export function renderShop() {
   $('#linkGo').addEventListener('click', analyzeLink);
   $('#linkInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') analyzeLink(); });
   $('#wishBtn', v)?.addEventListener('click', () => { addWish(state.linkResult.prod); renderShop(); });
-  $$('[data-unwish]', v).forEach((b) => b.addEventListener('click', () => { p.wishlist.splice(+b.dataset.unwish, 1); saveProfile(); renderShop(); }));
+  $$('[data-unwish]', v).forEach((b) => b.addEventListener('click', () => { p.wishlist.splice(+b.dataset.unwish, 1); saveProfile(); renderShop(); updateBadge(); }));
+  $('#checkPrices', v)?.addEventListener('click', async (e) => {
+    const b = e.currentTarget; b.disabled = true;
+    const found = await checkPrices({ force: true, onProgress: (i, n) => { b.innerHTML = `<span class="spinner"></span> ${Math.min(i + 1, n)} de ${n}`; } });
+    if (!found.length) toast('Ningún precio ha bajado por ahora');
+    if (state.tab === 'shop') renderShop();
+  });
+  $('#priceBell', v)?.addEventListener('click', async () => {
+    if (p.priceNotify) { p.priceNotify = false; saveProfile(); toast('Avisos con notificación desactivados'); }
+    else await enableNotifications();
+    renderShop();
+  });
+  // Las bajadas ya se han visto: quita el punto de la pestaña
+  if (dropsOf().length) { setTimeout(() => { dropsOf().forEach((w) => (w.drop.seen = true)); saveProfile(); updateBadge(); }, 1500); }
 
   const follow = (val) => { if (val && !p.brands.includes(val)) { p.brands.push(val); saveProfile(); delete state.news[val]; } renderShop(); loadNews(); };
   $('#brandAddBtn').addEventListener('click', () => follow($('#brandAdd').value.trim()));
